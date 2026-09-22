@@ -1,7 +1,7 @@
 -- Quizora DCA Quiz Platform Database Architecture (Step 1 Migration)
 -- PostgreSQL Migration Script for Supabase
 
-CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 
 -- ============================================================================
 -- 1. ENUMS
@@ -44,7 +44,7 @@ EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 
 -- PROFILES TABLE
 CREATE TABLE IF NOT EXISTS public.profiles (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     auth_user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE,
     name VARCHAR(255) NOT NULL,
     course VARCHAR(100) NOT NULL,
@@ -58,7 +58,7 @@ CREATE TABLE IF NOT EXISTS public.profiles (
 
 -- QUESTIONS TABLE
 CREATE TABLE IF NOT EXISTS public.questions (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     question_text TEXT NOT NULL,
     question_type question_type NOT NULL DEFAULT 'MCQ_SINGLE',
     difficulty difficulty_level NOT NULL DEFAULT 'MEDIUM',
@@ -77,7 +77,7 @@ CREATE TABLE IF NOT EXISTS public.questions (
 
 -- PAPERS TABLE
 CREATE TABLE IF NOT EXISTS public.papers (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     title VARCHAR(255) NOT NULL,
     description TEXT,
     course VARCHAR(100) NOT NULL,
@@ -95,7 +95,7 @@ CREATE TABLE IF NOT EXISTS public.papers (
 
 -- PAPER_QUESTIONS TABLE
 CREATE TABLE IF NOT EXISTS public.paper_questions (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     paper_id UUID NOT NULL REFERENCES public.papers(id) ON DELETE CASCADE,
     question_id UUID NOT NULL REFERENCES public.questions(id) ON DELETE CASCADE,
     question_order INTEGER NOT NULL,
@@ -106,7 +106,7 @@ CREATE TABLE IF NOT EXISTS public.paper_questions (
 
 -- EXAM_ATTEMPTS TABLE
 CREATE TABLE IF NOT EXISTS public.exam_attempts (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
     paper_id UUID NOT NULL REFERENCES public.papers(id) ON DELETE CASCADE,
     status attempt_status NOT NULL DEFAULT 'NOT_STARTED',
@@ -125,7 +125,7 @@ CREATE TABLE IF NOT EXISTS public.exam_attempts (
 
 -- ANSWERS TABLE
 CREATE TABLE IF NOT EXISTS public.answers (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     attempt_id UUID NOT NULL REFERENCES public.exam_attempts(id) ON DELETE CASCADE,
     question_id UUID NOT NULL REFERENCES public.questions(id) ON DELETE CASCADE,
     selected_option VARCHAR(10) NOT NULL,
@@ -138,7 +138,7 @@ CREATE TABLE IF NOT EXISTS public.answers (
 
 -- PROCTOR_EVENTS TABLE
 CREATE TABLE IF NOT EXISTS public.proctor_events (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     attempt_id UUID NOT NULL REFERENCES public.exam_attempts(id) ON DELETE CASCADE,
     user_id UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
     paper_id UUID NOT NULL REFERENCES public.papers(id) ON DELETE CASCADE,
@@ -151,7 +151,7 @@ CREATE TABLE IF NOT EXISTS public.proctor_events (
 
 -- ADMIN_AUDIT_LOGS TABLE
 CREATE TABLE IF NOT EXISTS public.admin_audit_logs (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     admin_user_id UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
     action VARCHAR(255) NOT NULL,
     target_type VARCHAR(100) NOT NULL,
