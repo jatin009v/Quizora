@@ -31,3 +31,6 @@ yarn-error.log*
 *.pem
 .idea/
 .vscode/
+
+# Supabase CLI temp directory
+supabase/.temp/

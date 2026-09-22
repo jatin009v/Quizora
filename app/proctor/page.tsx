@@ -13,10 +13,13 @@ import {
   ExternalLink,
   Clock,
   BookOpen,
+  LogOut,
 } from 'lucide-react';
 import Link from 'next/link';
+import { useBfcacheProtection } from '@/components/useBfcacheProtection';
 
 export default function ProctorDashboardPage() {
+  const { handleLogout } = useBfcacheProtection();
   const [metrics, setMetrics] = useState<any>(null);
   const [attempts, setAttempts] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -94,12 +97,20 @@ export default function ProctorDashboardPage() {
           </h1>
         </div>
 
-        <button
-          onClick={fetchData}
-          className="py-2.5 px-4 bg-white border-2 border-brand-black rounded-xl font-mono text-xs font-bold uppercase shadow-editorial hover:bg-warm-beige flex items-center gap-2"
-        >
-          <RefreshCw className="w-4 h-4 text-brand-black" /> Manual Refresh
-        </button>
+        <div className="flex items-center gap-3">
+          <button
+            onClick={fetchData}
+            className="py-2.5 px-4 bg-white border-2 border-brand-black rounded-xl font-mono text-xs font-bold uppercase shadow-editorial hover:bg-warm-beige flex items-center gap-2 cursor-pointer"
+          >
+            <RefreshCw className="w-4 h-4 text-brand-black" /> Manual Refresh
+          </button>
+          <button
+            onClick={handleLogout}
+            className="py-2.5 px-4 bg-white border-2 border-brand-black rounded-xl font-mono text-xs font-bold uppercase shadow-editorial hover:bg-red-50 text-red-600 flex items-center gap-2 cursor-pointer"
+          >
+            <LogOut className="w-4 h-4" /> Sign Out
+          </button>
+        </div>
       </div>
 
       {/* METRICS METRIC CARDS */}

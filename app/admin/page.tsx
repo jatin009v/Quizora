@@ -17,8 +17,10 @@ import {
   Sparkles,
   Layers,
 } from 'lucide-react';
+import { useBfcacheProtection } from '@/components/useBfcacheProtection';
 
 export default function AdminDashboardPage() {
+  const { handleLogout } = useBfcacheProtection();
   const [stats, setStats] = useState({
     totalUsers: 0,
     totalPapers: 0,
@@ -74,11 +76,9 @@ export default function AdminDashboardPage() {
                 <Shield className="w-4 h-4 mr-2" /> Proctor Dashboard
               </MagneticButton>
             </Link>
-            <Link href="/login">
-              <MagneticButton variant="outline" size="md">
-                Sign Out
-              </MagneticButton>
-            </Link>
+            <MagneticButton variant="outline" size="md" onClick={handleLogout}>
+              Sign Out
+            </MagneticButton>
           </div>
         </div>
 

@@ -5,9 +5,11 @@ import { Paper } from '@/types/database';
 import { MagneticButton } from '@/components/ui/MagneticButton';
 import { BookOpen, Award, LogOut, Clock, Key, CheckCircle2, AlertCircle } from 'lucide-react';
 import { useRouter } from 'next/navigation';
+import { useBfcacheProtection } from '@/components/useBfcacheProtection';
 
 export default function StudentDashboardPage() {
   const router = useRouter();
+  const { handleLogout } = useBfcacheProtection();
   const [studentInfo, setStudentInfo] = useState<{ name: string; course: string; year?: string } | null>(null);
   const [profileError, setProfileError] = useState<string | null>(null);
   const [publishedPapers, setPublishedPapers] = useState<Paper[]>([]);
@@ -84,14 +86,6 @@ export default function StudentDashboardPage() {
     }
   };
 
-  const handleLogout = async () => {
-    try {
-      await fetch('/api/auth/logout', { method: 'POST' });
-      router.push('/login');
-    } catch {
-      router.push('/login');
-    }
-  };
 
   return (
     <div className="min-h-screen bg-canvas text-brand-black p-6 md:p-12 noise-bg">
