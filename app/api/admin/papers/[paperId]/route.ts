@@ -89,3 +89,33 @@ export async function PUT(
     );
   }
 }
+
+export async function DELETE(
+  req: NextRequest,
+  { params }: { params: { paperId: string } }
+) {
+  try {
+    const auth = await getAuthContext();
+    if (!auth || auth.profile.role !== 'ADMIN') {
+      return NextResponse.json(
+        { success: false, error: 'Admin authorization required' },
+        { status: 403 }
+      );
+    }
+
+    const { paperId } = params;
+    const { deletePaper } = await import('@/lib/exam/paperService');
+    const result = await deletePaper(auth.profile.id, paperId);
+
+    if (!result.success) {
+      return NextResponse.json({ success: false, error: result.error }, { status: 400 });
+    }
+
+    return NextResponse.json({ success: true, message: 'Examination deleted successfully' }, { status: 200 });
+  } catch (err: any) {
+    return NextResponse.json(
+      { success: false, error: err.message || 'Internal server error' },
+      { status: 500 }
+    );
+  }
+}

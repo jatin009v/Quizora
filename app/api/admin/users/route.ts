@@ -19,8 +19,11 @@ export async function GET(req: NextRequest) {
     const course = searchParams.get('course') || undefined;
     const status = searchParams.get('status') || undefined;
     const query = searchParams.get('query') || undefined;
+    const tab = (searchParams.get('tab') as 'ADMIN_PROCTOR' | 'PARTICIPANTS') || undefined;
+    const page = searchParams.get('page') ? parseInt(searchParams.get('page')!, 10) : 1;
+    const limit = searchParams.get('limit') ? parseInt(searchParams.get('limit')!, 10) : 25;
 
-    const result = await listUsersForAdmin({ course, status, query });
+    const result = await listUsersForAdmin({ course, status, query, tab, page, limit });
     return NextResponse.json(result, { status: 200 });
   } catch (err) {
     return NextResponse.json(

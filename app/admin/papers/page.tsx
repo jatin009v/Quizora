@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { Paper } from '@/types/database';
 import { MagneticButton } from '@/components/ui/MagneticButton';
-import { Plus, Edit3, Award, Clock, FileText, CheckCircle2, Copy, Send, AlertTriangle, X } from 'lucide-react';
+import { Plus, Edit3, Award, Clock, FileText, CheckCircle2, Copy, Send, AlertTriangle, X, Trash2 } from 'lucide-react';
 import Link from 'next/link';
 
 export default function AdminPapersPage() {
@@ -17,6 +17,11 @@ export default function AdminPapersPage() {
   const [publishSuccessData, setPublishSuccessData] = useState<any | null>(null);
   const [publishError, setPublishError] = useState<string | null>(null);
   const [copiedCode, setCopiedCode] = useState(false);
+
+  // Paper Delete State
+  const [deletingPaper, setDeletingPaper] = useState<Paper | null>(null);
+  const [isDeletingPaper, setIsDeletingPaper] = useState(false);
+  const [deletePaperError, setDeletePaperError] = useState<string | null>(null);
 
   const fetchPapers = () => {
     setLoading(true);
@@ -65,6 +70,31 @@ export default function AdminPapersPage() {
       setPublishError('Network error while publishing paper.');
     } finally {
       setIsPublishing(false);
+    }
+  };
+
+  const handleConfirmDeletePaper = async () => {
+    if (!deletingPaper) return;
+
+    setIsDeletingPaper(true);
+    setDeletePaperError(null);
+
+    try {
+      const res = await fetch(`/api/admin/papers/${deletingPaper.id}`, {
+        method: 'DELETE',
+      });
+      const json = await res.json();
+
+      if (res.ok && json.success) {
+        setDeletingPaper(null);
+        fetchPapers();
+      } else {
+        setDeletePaperError(json.error || 'Failed to delete examination paper.');
+      }
+    } catch {
+      setDeletePaperError('Network error trying to delete paper.');
+    } finally {
+      setIsDeletingPaper(false);
     }
   };
 
@@ -202,6 +232,17 @@ export default function AdminPapersPage() {
                         <Award className="w-4 h-4" /> Results
                       </button>
                     </Link>
+
+                    <button
+                      onClick={() => {
+                        setDeletingPaper(paper);
+                        setDeletePaperError(null);
+                      }}
+                      className="py-2 px-3 bg-red-600 hover:bg-red-700 text-white rounded-lg font-display font-bold text-xs uppercase tracking-wider border-2 border-brand-black shadow-editorial flex items-center justify-center gap-1 cursor-pointer"
+                      title="Delete Examination Paper"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
                   </div>
 
                   {paper.status === 'DRAFT' && (
@@ -315,6 +356,53 @@ export default function AdminPapersPage() {
                   </button>
                 </div>
               )}
+            </div>
+          </div>
+        )}
+
+        {/* PAPER DELETE MODAL */}
+        {deletingPaper && (
+          <div className="fixed inset-0 bg-brand-black/70 backdrop-blur-xs flex items-center justify-center p-4 z-50">
+            <div className="bg-white max-w-md w-full rounded-2xl border-4 border-brand-black shadow-editorial-lg p-6 space-y-6">
+              <div className="flex items-center gap-3 border-b-3 border-brand-black pb-4 text-red-600">
+                <AlertTriangle className="w-7 h-7" />
+                <h3 className="font-display font-black text-xl uppercase">Delete Examination?</h3>
+              </div>
+
+              {deletePaperError && (
+                <div className="p-3 bg-red-100 border-2 border-red-500 text-red-900 font-mono text-xs font-bold rounded-lg">
+                  {deletePaperError}
+                </div>
+              )}
+
+              <p className="text-sm font-sans text-slate-700 leading-relaxed">
+                This will permanently remove examination <strong className="text-brand-black">{deletingPaper.title}</strong> and associated exam attempts, answers, and proctor events.
+              </p>
+
+              <div className="bg-emerald-50 border-2 border-emerald-400 p-3 rounded-xl font-mono text-xs text-emerald-900 space-y-1">
+                <p>✅ <strong>Question Bank Preserved:</strong> Questions in the Question Bank will NOT be deleted and remain available for reuse in future papers.</p>
+              </div>
+
+              <div className="bg-warm-beige p-3 rounded-xl border-2 border-brand-black font-mono text-xs text-slate-600">
+                ⚠️ Active exams with student attempts in progress cannot be deleted.
+              </div>
+
+              <div className="flex items-center justify-end gap-3 pt-2">
+                <button
+                  disabled={isDeletingPaper}
+                  onClick={() => setDeletingPaper(null)}
+                  className="py-2 px-4 rounded-xl border-2 border-brand-black font-mono text-xs font-bold uppercase hover:bg-slate-100 cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  disabled={isDeletingPaper}
+                  onClick={handleConfirmDeletePaper}
+                  className="py-2 px-4 bg-red-600 hover:bg-red-700 text-white font-mono text-xs font-bold uppercase rounded-xl border-2 border-brand-black shadow-editorial cursor-pointer"
+                >
+                  {isDeletingPaper ? 'Deleting...' : 'Delete Examination'}
+                </button>
+              </div>
             </div>
           </div>
         )}

@@ -218,16 +218,264 @@ export async function updateUserStatus(
   }
 }
 
+export const PROTECTED_DEMO_USERNAME = 'csjma22000022674';
+
+export function isUserProtected(profile: { role: string; username: string }): boolean {
+  if (profile.role === 'ADMIN' || profile.role === 'PROCTOR') return true;
+  if (profile.username.toLowerCase() === PROTECTED_DEMO_USERNAME.toLowerCase()) return true;
+  return false;
+}
+
+export async function deleteSingleParticipant(
+  adminProfileId: string,
+  targetUserId: string
+): Promise<{ success: boolean; error?: string }> {
+  const supabase = createAdminClient();
+  const nowIso = new Date().toISOString();
+
+  try {
+    // 1. Fetch profile to check protection rules
+    let profileToUpdate: Profile | null = null;
+
+    if (process.env.NODE_ENV === 'test' || !process.env.NEXT_PUBLIC_SUPABASE_URL?.includes('supabase.co')) {
+      profileToUpdate = mockUserProfiles.get(targetUserId) || null;
+      if (!profileToUpdate) {
+        profileToUpdate = Array.from(mockUserProfiles.values()).find(
+          (p) => p.id === targetUserId || p.auth_user_id === targetUserId
+        ) || null;
+      }
+    } else {
+      const { data } = await supabase
+        .from('profiles')
+        .select('*')
+        .or(`id.eq.${targetUserId},auth_user_id.eq.${targetUserId}`)
+        .maybeSingle();
+      profileToUpdate = data as Profile | null;
+    }
+
+    if (!profileToUpdate) {
+      return { success: false, error: 'Target participant account not found.' };
+    }
+
+    // 2. Enforce Protection Rules
+    if (isUserProtected(profileToUpdate)) {
+      return {
+        success: false,
+        error: 'Protected account (ADMIN, PROCTOR, or permanent Demo User) cannot be deleted.',
+      };
+    }
+
+    if (profileToUpdate.role !== 'STUDENT') {
+      return { success: false, error: 'Only student participant accounts can be deleted.' };
+    }
+
+    // 3. Perform Cascading Deletion
+    if (process.env.NODE_ENV === 'test' || !process.env.NEXT_PUBLIC_SUPABASE_URL?.includes('supabase.co')) {
+      const attemptIds = Array.from(mockExamStore.attempts.values())
+        .filter((a) => a.user_id === profileToUpdate!.id)
+        .map((a) => a.id);
+
+      attemptIds.forEach((attId) => {
+        mockExamStore.attempts.delete(attId);
+        mockExamStore.answers.delete(attId);
+      });
+
+      mockUserProfiles.delete(profileToUpdate.id);
+
+      mockAuditLogs.push({
+        id: `audit-${Date.now()}`,
+        admin_user_id: adminProfileId,
+        action: 'PARTICIPANT_DELETED',
+        target_type: 'PROFILE',
+        target_id: profileToUpdate.id,
+        metadata: { username: profileToUpdate.username, name: profileToUpdate.name },
+        created_at: nowIso,
+      });
+
+      return { success: true };
+    }
+
+    // Live Database Deletion
+    const { data: attempts } = await supabase
+      .from('exam_attempts')
+      .select('id')
+      .eq('user_id', profileToUpdate.id);
+
+    const attemptIds = (attempts || []).map((a) => a.id);
+
+    if (attemptIds.length > 0) {
+      await supabase.from('answers').delete().in('attempt_id', attemptIds);
+      await supabase.from('proctor_events').delete().in('attempt_id', attemptIds);
+      await supabase.from('exam_attempts').delete().eq('user_id', profileToUpdate.id);
+    }
+
+    const { error: profileDelErr } = await supabase
+      .from('profiles')
+      .delete()
+      .eq('id', profileToUpdate.id);
+
+    if (profileDelErr) {
+      return { success: false, error: `Failed to delete profile: ${profileDelErr.message}` };
+    }
+
+    if (profileToUpdate.auth_user_id) {
+      try {
+        await supabase.auth.admin.deleteUser(profileToUpdate.auth_user_id);
+      } catch (authErr: any) {
+        console.warn('Warning deleting auth user:', authErr.message);
+      }
+    }
+
+    await supabase.from('admin_audit_logs').insert({
+      admin_user_id: adminProfileId,
+      action: 'PARTICIPANT_DELETED',
+      target_type: 'PROFILE',
+      target_id: profileToUpdate.id,
+      metadata: { username: profileToUpdate.username, name: profileToUpdate.name },
+      created_at: nowIso,
+    });
+
+    return { success: true };
+  } catch (err: any) {
+    console.error('Error deleting participant:', err);
+    return { success: false, error: err.message || 'Failed to delete participant' };
+  }
+}
+
+export async function deleteAllParticipants(
+  adminProfileId: string
+): Promise<{ success: boolean; deletedCount: number; failedCount: number; error?: string }> {
+  const supabase = createAdminClient();
+  const nowIso = new Date().toISOString();
+
+  try {
+    if (process.env.NODE_ENV === 'test' || !process.env.NEXT_PUBLIC_SUPABASE_URL?.includes('supabase.co')) {
+      const allProfiles = Array.from(mockUserProfiles.values());
+      const targetProfiles = allProfiles.filter((p) => !isUserProtected(p) && p.role === 'STUDENT');
+
+      let deletedCount = 0;
+      targetProfiles.forEach((p) => {
+        const attemptIds = Array.from(mockExamStore.attempts.values())
+          .filter((a) => a.user_id === p.id)
+          .map((a) => a.id);
+
+        attemptIds.forEach((attId) => {
+          mockExamStore.attempts.delete(attId);
+          mockExamStore.answers.delete(attId);
+        });
+
+        mockUserProfiles.delete(p.id);
+        deletedCount++;
+      });
+
+      mockAuditLogs.push({
+        id: `audit-${Date.now()}`,
+        admin_user_id: adminProfileId,
+        action: 'PARTICIPANTS_BULK_DELETED',
+        target_type: 'PROFILE',
+        metadata: { deletedCount },
+        created_at: nowIso,
+      });
+
+      return { success: true, deletedCount, failedCount: 0 };
+    }
+
+    const { data: profiles, error: fetchErr } = await supabase
+      .from('profiles')
+      .select('id, auth_user_id, username, role')
+      .eq('role', 'STUDENT')
+      .neq('username', PROTECTED_DEMO_USERNAME);
+
+    if (fetchErr) {
+      return { success: false, deletedCount: 0, failedCount: 0, error: fetchErr.message };
+    }
+
+    const targetProfiles = (profiles || []).filter((p) => !isUserProtected(p));
+
+    if (targetProfiles.length === 0) {
+      return { success: true, deletedCount: 0, failedCount: 0 };
+    }
+
+    const targetUserIds = targetProfiles.map((p) => p.id);
+
+    const { data: attempts } = await supabase
+      .from('exam_attempts')
+      .select('id')
+      .in('user_id', targetUserIds);
+
+    const attemptIds = (attempts || []).map((a) => a.id);
+
+    if (attemptIds.length > 0) {
+      await supabase.from('answers').delete().in('attempt_id', attemptIds);
+      await supabase.from('proctor_events').delete().in('attempt_id', attemptIds);
+      await supabase.from('exam_attempts').delete().in('user_id', targetUserIds);
+    }
+
+    const { error: deleteProfErr } = await supabase
+      .from('profiles')
+      .delete()
+      .in('id', targetUserIds);
+
+    if (deleteProfErr) {
+      return { success: false, deletedCount: 0, failedCount: targetUserIds.length, error: deleteProfErr.message };
+    }
+
+    let deletedCount = 0;
+    let failedCount = 0;
+
+    for (const p of targetProfiles) {
+      if (p.auth_user_id) {
+        try {
+          await supabase.auth.admin.deleteUser(p.auth_user_id);
+          deletedCount++;
+        } catch {
+          failedCount++;
+        }
+      } else {
+        deletedCount++;
+      }
+    }
+
+    await supabase.from('admin_audit_logs').insert({
+      admin_user_id: adminProfileId,
+      action: 'PARTICIPANTS_BULK_DELETED',
+      target_type: 'PROFILE',
+      metadata: { deletedCount, failedCount },
+      created_at: nowIso,
+    });
+
+    return { success: true, deletedCount, failedCount };
+  } catch (err: any) {
+    console.error('Error in bulk participant deletion:', err);
+    return { success: false, deletedCount: 0, failedCount: 0, error: err.message || 'Server error' };
+  }
+}
+
 export async function listUsersForAdmin(filters?: {
   course?: string;
   status?: string;
   query?: string;
-}): Promise<{ success: boolean; users: Profile[] }> {
+  tab?: 'ADMIN_PROCTOR' | 'PARTICIPANTS';
+  page?: number;
+  limit?: number;
+}): Promise<{ success: boolean; users: Profile[]; total: number; page: number; totalPages: number }> {
+  const page = filters?.page || 1;
+  const limit = filters?.limit || 25;
+  const offset = (page - 1) * limit;
+  const tab = filters?.tab || 'PARTICIPANTS';
+
   const supabase = createAdminClient();
 
   try {
     if (process.env.NODE_ENV === 'test' || !process.env.NEXT_PUBLIC_SUPABASE_URL?.includes('supabase.co')) {
       let users = Array.from(mockUserProfiles.values());
+
+      if (tab === 'ADMIN_PROCTOR') {
+        users = users.filter((u) => u.role === 'ADMIN' || u.role === 'PROCTOR' || u.username.toLowerCase() === PROTECTED_DEMO_USERNAME.toLowerCase());
+      } else {
+        users = users.filter((u) => u.role === 'STUDENT' && u.username.toLowerCase() !== PROTECTED_DEMO_USERNAME.toLowerCase());
+      }
+
       if (filters?.course && filters.course !== 'ALL') {
         users = users.filter((u) => u.course === filters.course);
       }
@@ -238,10 +486,23 @@ export async function listUsersForAdmin(filters?: {
         const q = filters.query.toLowerCase();
         users = users.filter((u) => u.name.toLowerCase().includes(q) || u.username.toLowerCase().includes(q));
       }
-      return { success: true, users };
+
+      const total = users.length;
+      const paginatedUsers = users.slice(offset, offset + limit);
+      const totalPages = Math.ceil(total / limit) || 1;
+
+      return { success: true, users: paginatedUsers, total, page, totalPages };
     }
 
-    let dbQuery = supabase.from('profiles').select('*').order('created_at', { ascending: false });
+    let dbQuery = supabase
+      .from('profiles')
+      .select('*', { count: 'exact' });
+
+    if (tab === 'ADMIN_PROCTOR') {
+      dbQuery = dbQuery.or(`role.eq.ADMIN,role.eq.PROCTOR,username.eq.${PROTECTED_DEMO_USERNAME}`);
+    } else {
+      dbQuery = dbQuery.eq('role', 'STUDENT').neq('username', PROTECTED_DEMO_USERNAME);
+    }
 
     if (filters?.course && filters.course !== 'ALL') {
       dbQuery = dbQuery.eq('course', filters.course);
@@ -253,10 +514,21 @@ export async function listUsersForAdmin(filters?: {
       dbQuery = dbQuery.or(`name.ilike.%${filters.query}%,username.ilike.%${filters.query}%`);
     }
 
-    const { data: users } = await dbQuery;
+    dbQuery = dbQuery.order('created_at', { ascending: false }).range(offset, offset + limit - 1);
 
-    return { success: true, users: (users as Profile[]) || [] };
+    const { data: users, count } = await dbQuery;
+
+    const total = count || 0;
+    const totalPages = Math.ceil(total / limit) || 1;
+
+    return {
+      success: true,
+      users: (users as Profile[]) || [],
+      total,
+      page,
+      totalPages,
+    };
   } catch {
-    return { success: false, users: [] };
+    return { success: false, users: [], total: 0, page: 1, totalPages: 1 };
   }
 }

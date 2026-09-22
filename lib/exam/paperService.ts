@@ -165,3 +165,96 @@ export async function listPapersForAdmin(): Promise<{ success: boolean; papers: 
     return { success: false, papers: [] };
   }
 }
+
+export async function deletePaper(
+  adminProfileId: string,
+  paperId: string
+): Promise<{ success: boolean; error?: string }> {
+  const supabase = createAdminClient();
+  const nowIso = new Date().toISOString();
+
+  try {
+    if (process.env.NODE_ENV === 'test' || !process.env.NEXT_PUBLIC_SUPABASE_URL?.includes('supabase.co')) {
+      const attempts = Array.from(mockExamStore.attempts.values()).filter((a) => a.paper_id === paperId);
+      const hasActive = attempts.some((a) => a.status === 'IN_PROGRESS');
+      if (hasActive) {
+        return {
+          success: false,
+          error: 'This exam currently has active attempts and cannot be deleted while students are taking it.',
+        };
+      }
+
+      attempts.forEach((a) => {
+        mockExamStore.attempts.delete(a.id);
+        mockExamStore.answers.delete(a.id);
+      });
+      mockExamStore.paperQuestions.delete(paperId);
+
+      return { success: true };
+    }
+
+    // 1. Verify paper exists
+    const { data: paper, error: paperErr } = await supabase
+      .from('papers')
+      .select('id, title, status')
+      .eq('id', paperId)
+      .maybeSingle();
+
+    if (paperErr || !paper) {
+      return { success: false, error: 'Examination paper not found.' };
+    }
+
+    // 2. Check for active IN_PROGRESS attempts
+    const { count: activeCount } = await supabase
+      .from('exam_attempts')
+      .select('id', { count: 'exact', head: true })
+      .eq('paper_id', paperId)
+      .eq('status', 'IN_PROGRESS');
+
+    if (activeCount && activeCount > 0) {
+      return {
+        success: false,
+        error: 'This exam currently has active attempts and cannot be deleted while students are taking it.',
+      };
+    }
+
+    // 3. Fetch all attempt IDs for this paper
+    const { data: attempts } = await supabase
+      .from('exam_attempts')
+      .select('id')
+      .eq('paper_id', paperId);
+
+    const attemptIds = (attempts || []).map((a) => a.id);
+
+    if (attemptIds.length > 0) {
+      await supabase.from('answers').delete().in('attempt_id', attemptIds);
+      await supabase.from('proctor_events').delete().in('attempt_id', attemptIds);
+      await supabase.from('exam_attempts').delete().eq('paper_id', paperId);
+    }
+
+    // 4. Delete paper_questions linkage rows ONLY (DO NOT delete questions from questions table!)
+    await supabase.from('paper_questions').delete().eq('paper_id', paperId);
+
+    // 5. Delete paper record
+    const { error: deleteErr } = await supabase.from('papers').delete().eq('id', paperId);
+
+    if (deleteErr) {
+      return { success: false, error: `Failed to delete paper: ${deleteErr.message}` };
+    }
+
+    // 6. Audit Log
+    await supabase.from('admin_audit_logs').insert({
+      admin_user_id: adminProfileId,
+      action: 'PAPER_DELETED',
+      target_type: 'PAPER',
+      target_id: paperId,
+      metadata: { title: paper.title, status: paper.status },
+      created_at: nowIso,
+    });
+
+    return { success: true };
+  } catch (err: any) {
+    console.error('Error deleting paper:', err);
+    return { success: false, error: err.message || 'Failed to delete paper' };
+  }
+}
