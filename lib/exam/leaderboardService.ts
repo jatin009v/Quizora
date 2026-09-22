@@ -7,7 +7,7 @@ export interface LeaderboardEntry {
   userId: string;
   studentName: string;
   course: string;
-  rollNumber: string;
+  username: string;
   score: number;
   totalMarks: number;
   percentage: number;
@@ -51,7 +51,7 @@ export async function getPaperLeaderboard(paperId: string): Promise<PaperLeaderb
 
       const { data: attData } = await supabase
         .from('exam_attempts')
-        .select('*, profiles(name, course, roll_number)')
+        .select('*, profiles(name, course, username)')
         .eq('paper_id', paperId);
 
       if (attData) rawAttempts = attData;
@@ -95,7 +95,7 @@ export async function getPaperLeaderboard(paperId: string): Promise<PaperLeaderb
     const leaderboard: LeaderboardEntry[] = submittedAttempts.map((att, idx) => {
       const studentName = att.profiles?.name || att.user_id || `Student-${idx + 1}`;
       const course = att.profiles?.course || 'DCA';
-      const rollNumber = att.profiles?.roll_number || `2026-DCA-${idx + 1}`;
+      const username = att.profiles?.username || `student${idx + 1}`;
       const score = Number(att.score || 0);
       const totalMarks = att.total_marks || 50;
       const percentage = Number(((score / totalMarks) * 100).toFixed(2));
@@ -135,7 +135,7 @@ export async function getPaperLeaderboard(paperId: string): Promise<PaperLeaderb
         userId: att.user_id,
         studentName,
         course,
-        rollNumber,
+        username,
         score,
         totalMarks,
         percentage,

@@ -20,7 +20,7 @@ export async function GET(
 
     const { data: attempt, error } = await supabase
       .from('exam_attempts')
-      .select('*, papers(title, course, total_marks), profiles(name, course, roll_number)')
+      .select('*, papers(title, course, total_marks), profiles(name, course, username)')
       .eq('id', attemptId)
       .single();
 
@@ -63,7 +63,7 @@ export async function GET(
           paperTitle: attempt.papers?.title || 'DCA Exam',
           studentName: attempt.profiles?.name || auth.profile.name,
           course: attempt.profiles?.course || auth.profile.course,
-          rollNumber: attempt.profiles?.roll_number || auth.profile.roll_number,
+          username: attempt.profiles?.username || auth.profile.username,
           score,
           totalMarks,
           percentage,

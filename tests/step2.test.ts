@@ -258,7 +258,7 @@ describe('Quizora DCA Quiz Platform — Step 2 Verification Suite', () => {
       last_question_index: 0,
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
-      profiles: { name: 'Student High', course: 'DCA', roll_number: '001' },
+      profiles: { name: 'Student High', course: 'DCA', year: '1st Year' },
     } as any);
 
     mockExamStore.attempts.set(attempt2Id, {
@@ -277,7 +277,7 @@ describe('Quizora DCA Quiz Platform — Step 2 Verification Suite', () => {
       last_question_index: 0,
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
-      profiles: { name: 'Student Low', course: 'DCA', roll_number: '002' },
+      profiles: { name: 'Student Low', course: 'DCA', year: '1st Year' },
     } as any);
 
     const lb = await getPaperLeaderboard(paperId);
@@ -302,7 +302,7 @@ describe('Quizora DCA Quiz Platform — Step 2 Verification Suite', () => {
       last_question_index: 0,
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
-      profiles: { name: 'Rahul (Earlier)', course: 'DCA', roll_number: '001' },
+      profiles: { name: 'Student (Earlier)', course: 'DCA', year: '1st Year' },
     } as any);
 
     mockExamStore.attempts.set(attempt2Id, {
@@ -321,7 +321,7 @@ describe('Quizora DCA Quiz Platform — Step 2 Verification Suite', () => {
       last_question_index: 0,
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
-      profiles: { name: 'Jatin (Later)', course: 'DCA', roll_number: '002' },
+      profiles: { name: 'Student (Later)', course: 'DCA', year: '1st Year' },
     } as any);
 
     const lb = await getPaperLeaderboard(paperId);

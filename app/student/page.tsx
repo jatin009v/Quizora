@@ -3,13 +3,13 @@
 import React, { useState, useEffect } from 'react';
 import { Paper } from '@/types/database';
 import { MagneticButton } from '@/components/ui/MagneticButton';
-import { BookOpen, Award, LogOut, Clock, Key, ShieldCheck, CheckCircle2, AlertTriangle, X } from 'lucide-react';
+import { BookOpen, Award, LogOut, Clock, Key, CheckCircle2, AlertCircle } from 'lucide-react';
 import { useRouter } from 'next/navigation';
-import Link from 'next/link';
 
 export default function StudentDashboardPage() {
   const router = useRouter();
-  const [studentInfo, setStudentInfo] = useState<any>(null);
+  const [studentInfo, setStudentInfo] = useState<{ name: string; course: string; year?: string } | null>(null);
+  const [profileError, setProfileError] = useState<string | null>(null);
   const [publishedPapers, setPublishedPapers] = useState<Paper[]>([]);
   const [activeTab, setActiveTab] = useState<'available' | 'results'>('available');
   const [loading, setLoading] = useState(true);
@@ -21,13 +21,25 @@ export default function StudentDashboardPage() {
   const [accessError, setAccessError] = useState<string | null>(null);
 
   useEffect(() => {
-    setStudentInfo({
-      name: 'Rahul Kumar',
-      course: 'DCA Computer Science',
-      rollNumber: '2026-DCA-001',
-      username: 'student001',
-    });
+    // 1. Fetch authenticated student profile
+    fetch('/api/student/profile')
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.success && data.profile) {
+          setStudentInfo({
+            name: data.profile.name,
+            course: data.profile.course,
+            year: data.profile.year,
+          });
+        } else {
+          setProfileError(data.error || 'Unable to load your profile. Please sign in again or contact the administrator.');
+        }
+      })
+      .catch(() => {
+        setProfileError('Unable to load your profile. Please sign in again or contact the administrator.');
+      });
 
+    // 2. Fetch available published exam papers
     fetch('/api/student/exams/published')
       .then((res) => res.json())
       .then((data) => {
@@ -61,7 +73,6 @@ export default function StudentDashboardPage() {
 
       if (res.ok && json.success) {
         setShowAccessModal(false);
-        // Navigate to Pre-Exam Instructions page
         router.push(`/student/exam/start/${json.data.paperId}`);
       } else {
         setAccessError(json.error || 'Invalid or unavailable exam code.');
@@ -115,28 +126,41 @@ export default function StudentDashboardPage() {
           </div>
         </div>
 
-        {/* STUDENT PROFILE CARD */}
-        <div className="bg-white p-6 rounded-2xl border-4 border-brand-black shadow-editorial-lg flex flex-wrap items-center justify-between gap-6">
-          <div className="flex items-center gap-4">
-            <div className="w-14 h-14 rounded-2xl bg-warm-beige border-3 border-brand-black shadow-editorial flex items-center justify-center font-display font-black text-2xl text-burnt-orange">
-              {studentInfo?.name?.charAt(0) || 'S'}
+        {/* PROFILE ERROR OR PROFILE CARD */}
+        {profileError ? (
+          <div className="bg-red-50 p-6 rounded-2xl border-4 border-red-500 shadow-editorial text-red-700 flex flex-wrap items-center justify-between gap-4">
+            <div className="flex items-center gap-3">
+              <AlertCircle className="w-6 h-6 shrink-0 text-red-600" />
+              <p className="font-bold text-sm">{profileError}</p>
             </div>
-            <div>
-              <h2 className="font-display font-black text-2xl text-brand-black uppercase">
-                {studentInfo?.name || 'Student Name'}
-              </h2>
-              <p className="text-xs font-mono text-slate-600">
-                Course: <strong className="text-brand-black">{studentInfo?.course}</strong> | Roll Number:{' '}
-                <strong className="text-brand-black">{studentInfo?.rollNumber}</strong> | Username:{' '}
-                <strong className="text-burnt-orange">{studentInfo?.username}</strong>
-              </p>
-            </div>
+            <button
+              onClick={handleLogout}
+              className="px-4 py-2 bg-red-600 text-white rounded-lg font-bold text-xs uppercase hover:bg-red-700"
+            >
+              Return to Login
+            </button>
           </div>
+        ) : (
+          <div className="bg-white p-6 rounded-2xl border-4 border-brand-black shadow-editorial-lg flex flex-wrap items-center justify-between gap-6">
+            <div className="flex items-center gap-4">
+              <div className="w-14 h-14 rounded-2xl bg-warm-beige border-3 border-brand-black shadow-editorial flex items-center justify-center font-display font-black text-2xl text-burnt-orange uppercase">
+                {studentInfo?.name?.charAt(0) || 'S'}
+              </div>
+              <div>
+                <h2 className="font-display font-black text-3xl text-brand-black uppercase">
+                  {studentInfo?.name || 'Loading Student...'}
+                </h2>
+                <p className="text-sm font-bold text-slate-600 uppercase mt-0.5">
+                  Course: <span className="text-burnt-orange">{studentInfo?.course || '—'}</span>
+                </p>
+              </div>
+            </div>
 
-          <div className="bg-emerald-50 border-2 border-emerald-500 px-4 py-2 rounded-xl text-xs font-mono font-bold text-emerald-800 flex items-center gap-2">
-            <CheckCircle2 className="w-4 h-4 text-emerald-600" /> Identity Authenticated
+            <div className="bg-emerald-50 border-2 border-emerald-500 px-4 py-2 rounded-xl text-xs font-mono font-bold text-emerald-800 flex items-center gap-2">
+              <CheckCircle2 className="w-4 h-4 text-emerald-600" /> Authenticated Identity
+            </div>
           </div>
-        </div>
+        )}
 
         {/* TABS HEADER */}
         <div className="flex items-center gap-4 border-b-3 border-brand-black pb-2">
@@ -184,128 +208,76 @@ export default function StudentDashboardPage() {
               {publishedPapers.map((paper) => (
                 <div
                   key={paper.id}
-                  className="bg-white p-6 rounded-2xl border-3 border-brand-black shadow-editorial flex flex-col justify-between space-y-4"
+                  className="bg-white p-6 rounded-2xl border-4 border-brand-black shadow-editorial flex flex-col justify-between space-y-4"
                 >
-                  <div>
-                    <div className="flex items-center justify-between gap-2 mb-2">
-                      <span className="bg-emerald-400 text-brand-black border border-brand-black px-2.5 py-0.5 rounded font-mono text-[10px] font-bold uppercase">
-                        Active Exam
-                      </span>
-                      <span className="text-xs font-mono text-slate-500">
-                        {paper.duration_minutes} Minutes
-                      </span>
-                    </div>
-
-                    <h3 className="font-display font-black text-xl text-brand-black leading-tight">
-                      {paper.title}
-                    </h3>
-                    <p className="text-xs text-slate-600 mt-1 line-clamp-2">
-                      {paper.description || 'Official course examination paper.'}
-                    </p>
-
-                    <div className="grid grid-cols-2 gap-2 text-xs font-mono bg-warm-beige p-3 rounded-lg border-2 border-brand-black mt-4">
-                      <div>
-                        <span className="text-slate-500 block">Questions:</span>
-                        <span className="font-bold text-brand-black">{paper.required_question_count} Qs</span>
-                      </div>
-                      <div>
-                        <span className="text-slate-500 block">Total Marks:</span>
-                        <span className="font-bold text-burnt-orange">{paper.total_marks} Marks</span>
-                      </div>
-                    </div>
+                  <div className="space-y-2">
+                    <span className="bg-vibrant-pink text-white px-2.5 py-0.5 rounded font-mono text-[10px] font-bold uppercase tracking-wider border border-brand-black">
+                      PUBLISHED EXAM
+                    </span>
+                    <h3 className="font-display font-black text-xl uppercase text-brand-black">{paper.title}</h3>
+                    <p className="text-xs text-slate-600 font-medium">{paper.description}</p>
                   </div>
 
-                  <Link href={`/student/exam/start/${paper.id}`}>
-                    <button className="w-full py-2.5 px-4 bg-burnt-orange hover:bg-burnt-orange-hover text-white rounded-lg font-display font-bold text-xs uppercase tracking-wider border-2 border-brand-black shadow-editorial cursor-pointer flex items-center justify-center gap-2">
-                      <Key className="w-4 h-4" /> Start / Continue Exam
-                    </button>
-                  </Link>
+                  <div className="pt-4 border-t-2 border-slate-100 flex items-center justify-between">
+                    <div className="text-xs font-mono font-bold text-slate-500">
+                      Duration: {paper.duration_minutes} Mins | Marks: {paper.total_marks}
+                    </div>
+                    <MagneticButton variant="primary" size="sm" onClick={() => setShowAccessModal(true)}>
+                      Start Exam
+                    </MagneticButton>
+                  </div>
                 </div>
               ))}
             </div>
           )
         ) : (
-          <div className="bg-white p-6 rounded-2xl border-4 border-brand-black shadow-editorial space-y-4">
-            <h3 className="font-display font-black text-xl uppercase border-b-2 border-brand-black pb-2">
-              Past Exam Scorecards
-            </h3>
-
-            <div className="bg-warm-beige p-4 rounded-xl border-2 border-brand-black flex flex-wrap items-center justify-between gap-4">
-              <div>
-                <span className="bg-burnt-orange text-white px-2.5 py-0.5 rounded text-[10px] font-mono font-bold uppercase">
-                  DCA Computer Science
-                </span>
-                <h4 className="font-display font-black text-lg text-brand-black mt-1">
-                  DCA Computer Fundamentals Examination
-                </h4>
-                <p className="text-xs font-mono text-slate-600">Attempt ID: a1b2c3d4-e5f6</p>
-              </div>
-
-              <Link href="/student/results/a1b2c3d4-e5f6-7890-abcd-1234567890ab">
-                <button className="py-2 px-4 bg-burnt-orange hover:bg-burnt-orange-hover text-white rounded-lg font-display font-bold text-xs uppercase tracking-wider border-2 border-brand-black shadow-editorial cursor-pointer">
-                  View Full Scorecard
-                </button>
-              </Link>
-            </div>
+          <div className="bg-white p-8 rounded-2xl border-4 border-brand-black shadow-editorial text-center">
+            <p className="font-mono text-sm font-bold text-slate-600">Select an exam paper above to view detailed score breakdown.</p>
           </div>
         )}
 
-        {/* ENTER ACCESS CODE MODAL */}
+        {/* ACCESS CODE MODAL */}
         {showAccessModal && (
-          <div className="fixed inset-0 bg-brand-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-            <div className="bg-white max-w-md w-full rounded-3xl border-4 border-brand-black shadow-editorial-lg p-6 space-y-6 relative">
+          <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
+            <div className="bg-white border-4 border-brand-black rounded-3xl shadow-editorial max-w-md w-full p-6 space-y-6 relative">
               <button
                 onClick={() => setShowAccessModal(false)}
-                className="absolute right-4 top-4 p-1 hover:bg-slate-100 rounded-lg text-slate-500"
+                className="absolute top-4 right-4 p-2 bg-slate-100 border-2 border-brand-black rounded-lg hover:bg-slate-200"
               >
-                <X className="w-5 h-5" />
+                ✕
               </button>
 
-              <div className="flex items-center gap-3 border-b-2 border-brand-black pb-3">
-                <Key className="w-6 h-6 text-burnt-orange" />
-                <h3 className="font-display font-black text-2xl uppercase">Enter Exam Access Code</h3>
+              <div>
+                <span className="bg-burnt-orange text-white px-3 py-1 rounded font-mono text-xs font-bold uppercase tracking-wider border-2 border-brand-black shadow-editorial">
+                  SECURITY VERIFICATION
+                </span>
+                <h2 className="font-display font-black text-2xl uppercase text-brand-black mt-2">
+                  Enter Examination Access Code
+                </h2>
+                <p className="text-xs text-slate-600 font-medium mt-1">
+                  Ask your invigilator or administrator for the official access code.
+                </p>
               </div>
 
+              {accessError && (
+                <div className="p-3 bg-red-50 border-2 border-red-500 rounded-xl text-red-700 text-xs font-bold">
+                  {accessError}
+                </div>
+              )}
+
               <form onSubmit={handleVerifyAccessCode} className="space-y-4">
-                <div>
-                  <label className="block text-xs font-mono font-bold uppercase mb-1.5 text-brand-black">
-                    Exam Access Code
-                  </label>
-                  <input
-                    type="text"
-                    placeholder="e.g. DCA-7K4P9X"
-                    value={accessCodeInput}
-                    onChange={(e) => setAccessCodeInput(e.target.value)}
-                    required
-                    className="w-full p-3 rounded-xl border-2 border-brand-black font-mono font-black text-lg text-burnt-orange tracking-wider uppercase focus:outline-none focus:ring-2 focus:ring-burnt-orange"
-                  />
-                </div>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. DCA2026"
+                  value={accessCodeInput}
+                  onChange={(e) => setAccessCodeInput(e.target.value.toUpperCase())}
+                  className="w-full p-4 bg-slate-50 border-3 border-brand-black rounded-xl font-mono text-center font-bold text-2xl tracking-widest text-burnt-orange focus:outline-none focus:ring-2 focus:ring-burnt-orange uppercase"
+                />
 
-                {accessError && (
-                  <div className="p-3 bg-red-100 border-2 border-red-500 rounded-xl text-xs font-mono font-bold text-red-700 flex items-center gap-2">
-                    <AlertTriangle className="w-4 h-4 shrink-0" /> {accessError}
-                  </div>
-                )}
-
-                <div className="flex items-center gap-3 pt-2">
-                  <button
-                    type="button"
-                    onClick={() => setShowAccessModal(false)}
-                    className="flex-1 py-3 px-4 bg-warm-beige hover:bg-warm-beige-dark text-brand-black rounded-xl font-display font-bold text-xs uppercase border-2 border-brand-black shadow-editorial cursor-pointer"
-                  >
-                    Cancel
-                  </button>
-
-                  <MagneticButton
-                    variant="primary"
-                    size="md"
-                    type="submit"
-                    disabled={validatingCode}
-                    className="flex-1"
-                  >
-                    {validatingCode ? 'Validating...' : 'Verify Code'}
-                  </MagneticButton>
-                </div>
+                <MagneticButton variant="primary" size="lg" className="w-full justify-center">
+                  {validatingCode ? 'Verifying Code...' : 'Verify Access Code & Begin'}
+                </MagneticButton>
               </form>
             </div>
           </div>

@@ -119,7 +119,7 @@ export default function BulkImportPage() {
                 {file ? file.name : 'Drag and drop Excel spreadsheet here'}
               </p>
               <p className="text-xs font-mono text-slate-500 mt-1">
-                Required Columns: <code className="bg-warm-beige border border-slate-300 px-1.5 py-0.5 rounded text-brand-black font-bold">name</code>, <code className="bg-warm-beige border border-slate-300 px-1.5 py-0.5 rounded text-brand-black font-bold">course</code>, <code className="bg-warm-beige border border-slate-300 px-1.5 py-0.5 rounded text-brand-black font-bold">roll_number</code>, <code className="bg-warm-beige border border-slate-300 px-1.5 py-0.5 rounded text-brand-black font-bold">username</code>, <code className="bg-warm-beige border border-slate-300 px-1.5 py-0.5 rounded text-brand-black font-bold">password</code>
+                Required Columns: <code className="bg-warm-beige border border-slate-300 px-1.5 py-0.5 rounded text-brand-black font-bold">name</code>, <code className="bg-warm-beige border border-slate-300 px-1.5 py-0.5 rounded text-brand-black font-bold">course</code>, <code className="bg-warm-beige border border-slate-300 px-1.5 py-0.5 rounded text-brand-black font-bold">year</code>, <code className="bg-warm-beige border border-slate-300 px-1.5 py-0.5 rounded text-brand-black font-bold">username</code>, <code className="bg-warm-beige border border-slate-300 px-1.5 py-0.5 rounded text-brand-black font-bold">password</code>
               </p>
             </div>
 
@@ -211,7 +211,7 @@ export default function BulkImportPage() {
                     <th className="py-2.5 px-4">Row #</th>
                     <th className="py-2.5 px-4">Name</th>
                     <th className="py-2.5 px-4">Course</th>
-                    <th className="py-2.5 px-4">Roll Number</th>
+                    <th className="py-2.5 px-4">Year</th>
                     <th className="py-2.5 px-4">Username</th>
                     <th className="py-2.5 px-4">Validation Status</th>
                   </tr>
@@ -222,7 +222,7 @@ export default function BulkImportPage() {
                       <td className="py-2.5 px-4 font-bold">#{row.rowNumber}</td>
                       <td className="py-2.5 px-4">{row.name}</td>
                       <td className="py-2.5 px-4">{row.course}</td>
-                      <td className="py-2.5 px-4">{row.rollNumber}</td>
+                      <td className="py-2.5 px-4">{row.year}</td>
                       <td className="py-2.5 px-4 text-burnt-orange font-bold">{row.username}</td>
                       <td className="py-2.5 px-4">
                         {row.isValid ? (

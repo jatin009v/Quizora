@@ -74,7 +74,7 @@ async function runLoadTest() {
       auth_user_id: `auth-${sId}`,
       name: `Load Student ${s}`,
       course: 'DCA Computer Science',
-      roll_number: `2026-DCA-${s.toString().padStart(3, '0')}`,
+      year: '1st Year',
       username: `student${s}`,
       role: 'STUDENT',
       status: 'ACTIVE',

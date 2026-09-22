@@ -138,7 +138,7 @@ export default function LoginPage() {
             <span className="font-bold text-brand-black block">Quick Test Logins:</span>
             <div className="text-slate-700 flex justify-between">
               <span>Admin: <strong className="text-burnt-orange">admin</strong></span>
-              <span>Student: <strong className="text-vibrant-pink">student001</strong></span>
+              <span>Student: <strong className="text-vibrant-pink">riyapandey</strong></span>
             </div>
           </div>
         </div>

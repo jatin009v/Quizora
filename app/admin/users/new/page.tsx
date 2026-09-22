@@ -8,7 +8,7 @@ import Link from 'next/link';
 export default function NewUserPage() {
   const [name, setName] = useState('');
   const [course, setCourse] = useState('DCA Computer Science');
-  const [rollNumber, setRollNumber] = useState('');
+  const [year, setYear] = useState('1st Year');
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
 
@@ -30,7 +30,7 @@ export default function NewUserPage() {
         body: JSON.stringify({
           name: name.trim(),
           course: course.trim(),
-          rollNumber: rollNumber.trim(),
+          year,
           username: username.trim(),
           password,
           role: 'STUDENT',
@@ -41,9 +41,7 @@ export default function NewUserPage() {
 
       if (res.ok && data.success) {
         setSuccessData(data.data);
-        // Clear inputs except course
         setName('');
-        setRollNumber('');
         setUsername('');
         setPassword('');
       } else {
@@ -96,10 +94,10 @@ export default function NewUserPage() {
         <form onSubmit={handleSubmit} className="bg-white p-8 rounded-2xl border-4 border-brand-black shadow-editorial-lg space-y-6">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
-              <label className="block text-xs font-mono font-bold uppercase mb-1">Student Full Name</label>
+              <label className="block text-xs font-mono font-bold uppercase mb-1">Student Full Name *</label>
               <input
                 type="text"
-                placeholder="e.g. Jatin Gupta"
+                placeholder="e.g. Riya Pandey"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 required
@@ -108,9 +106,10 @@ export default function NewUserPage() {
             </div>
 
             <div>
-              <label className="block text-xs font-mono font-bold uppercase mb-1">Target Course</label>
+              <label className="block text-xs font-mono font-bold uppercase mb-1">Target Course *</label>
               <input
                 type="text"
+                placeholder="e.g. MCA or DCA Computer Science"
                 value={course}
                 onChange={(e) => setCourse(e.target.value)}
                 required
@@ -121,22 +120,24 @@ export default function NewUserPage() {
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
-              <label className="block text-xs font-mono font-bold uppercase mb-1">Roll Number</label>
-              <input
-                type="text"
-                placeholder="e.g. DCA-2026-042"
-                value={rollNumber}
-                onChange={(e) => setRollNumber(e.target.value)}
-                required
-                className="w-full p-3 rounded-lg border-2 border-brand-black font-mono font-bold focus:outline-none focus:ring-2 focus:ring-burnt-orange"
-              />
+              <label className="block text-xs font-mono font-bold uppercase mb-1">Academic Year</label>
+              <select
+                value={year}
+                onChange={(e) => setYear(e.target.value)}
+                className="w-full p-3 rounded-lg border-2 border-brand-black font-mono font-bold focus:outline-none focus:ring-2 focus:ring-burnt-orange uppercase"
+              >
+                <option value="1st Year">1st Year</option>
+                <option value="2nd Year">2nd Year</option>
+                <option value="3rd Year">3rd Year</option>
+                <option value="Final Year">Final Year</option>
+              </select>
             </div>
 
             <div>
-              <label className="block text-xs font-mono font-bold uppercase mb-1">Assigned Username</label>
+              <label className="block text-xs font-mono font-bold uppercase mb-1">Assigned Username *</label>
               <input
                 type="text"
-                placeholder="e.g. jatin001"
+                placeholder="e.g. riyapandey"
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
                 required
@@ -146,7 +147,7 @@ export default function NewUserPage() {
           </div>
 
           <div>
-            <label className="block text-xs font-mono font-bold uppercase mb-1">Temporary Initial Password</label>
+            <label className="block text-xs font-mono font-bold uppercase mb-1">Temporary Initial Password *</label>
             <input
               type="password"
               placeholder="Minimum 6 characters"

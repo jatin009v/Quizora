@@ -92,8 +92,7 @@ export default function StudentResultPage({ params }: { params: { attemptId: str
               {result.studentName}
             </h2>
             <p className="text-xs font-mono text-slate-500 mt-1">
-              Course: <span className="font-bold text-brand-black">{result.course}</span> | Roll Number:{' '}
-              <span className="font-bold text-brand-black">{result.rollNumber}</span>
+              Course: <span className="font-bold text-brand-black">{result.course}</span>
             </p>
           </div>
 

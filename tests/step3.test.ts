@@ -17,7 +17,7 @@ describe('Quizora DCA Quiz Platform — Step 3 Security & Auth Suite', () => {
       auth_user_id: 'auth-admin-001',
       name: 'System Admin',
       course: 'DCA',
-      roll_number: 'ADMIN-01',
+      year: '1st Year',
       username: 'admin',
       role: 'ADMIN',
       status: 'ACTIVE',
@@ -33,23 +33,23 @@ describe('Quizora DCA Quiz Platform — Step 3 Security & Auth Suite', () => {
 
   it('2. Admin can create a student account manually', async () => {
     const res = await createSingleUser(adminId, {
-      name: 'Rahul Kumar',
+      name: 'Test Student',
       course: 'DCA',
-      rollNumber: 'DCA001',
-      username: 'rahul001',
+      year: '1st Year',
+      username: 'teststudent001',
       password: 'password123',
       role: 'STUDENT',
     });
 
     expect(res.success).toBe(true);
-    expect(res.data?.username).toBe('rahul001');
+    expect(res.data?.username).toBe('teststudent001');
   });
 
   it('3. Duplicate username is rejected', async () => {
     await createSingleUser(adminId, {
       name: 'Student One',
       course: 'DCA',
-      rollNumber: 'DCA001',
+      year: '1st Year',
       username: 'student001',
       password: 'password123',
       role: 'STUDENT',
@@ -58,7 +58,7 @@ describe('Quizora DCA Quiz Platform — Step 3 Security & Auth Suite', () => {
     const dupRes = await createSingleUser(adminId, {
       name: 'Student Two',
       course: 'DCA',
-      rollNumber: 'DCA002',
+      year: '2nd Year',
       username: 'student001', // Duplicate!
       password: 'password123',
       role: 'STUDENT',
@@ -72,7 +72,7 @@ describe('Quizora DCA Quiz Platform — Step 3 Security & Auth Suite', () => {
     const res = await createSingleUser(adminId, {
       name: 'Disabled Student',
       course: 'DCA',
-      rollNumber: 'DCA009',
+      year: '1st Year',
       username: 'disabled001',
       password: 'password123',
       role: 'STUDENT',
@@ -90,7 +90,7 @@ describe('Quizora DCA Quiz Platform — Step 3 Security & Auth Suite', () => {
   it('5. Excel validation detects missing required columns', async () => {
     // Generate buffer with missing 'password' column
     const worksheet = XLSX.utils.json_to_sheet([
-      { name: 'Jatin', course: 'DCA', roll_number: '001', username: 'jatin001' },
+      { name: 'Jatin', course: 'DCA', year: '1st Year', username: 'jatin001' },
     ]);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, worksheet, 'Students');
@@ -103,8 +103,8 @@ describe('Quizora DCA Quiz Platform — Step 3 Security & Auth Suite', () => {
 
   it('6. Excel validation detects duplicate usernames within file', async () => {
     const worksheet = XLSX.utils.json_to_sheet([
-      { name: 'Jatin 1', course: 'DCA', roll_number: '001', username: 'jatin001', password: 'password123' },
-      { name: 'Jatin 2', course: 'DCA', roll_number: '002', username: 'jatin001', password: 'password123' }, // Duplicate!
+      { name: 'Jatin 1', course: 'DCA', year: '1st Year', username: 'jatin001', password: 'password123' },
+      { name: 'Jatin 2', course: 'DCA', year: '1st Year', username: 'jatin001', password: 'password123' }, // Duplicate!
     ]);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, worksheet, 'Students');
@@ -116,25 +116,23 @@ describe('Quizora DCA Quiz Platform — Step 3 Security & Auth Suite', () => {
     expect(val.duplicateCount).toBe(1);
   });
 
-  it('7. Excel validation detects duplicate roll numbers within file', async () => {
+  it('7. Excel validation requires year column', async () => {
     const worksheet = XLSX.utils.json_to_sheet([
-      { name: 'Rahul 1', course: 'DCA', roll_number: '001', username: 'rahul001', password: 'password123' },
-      { name: 'Rahul 2', course: 'DCA', roll_number: '001', username: 'rahul002', password: 'password123' }, // Duplicate roll!
+      { name: 'Test Student', course: 'DCA', username: 'testuser', password: 'password123' },
     ]);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, worksheet, 'Students');
     const buffer = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
 
     const val = await parseAndValidateExcel(buffer);
-    expect(val.success).toBe(true);
-    expect(val.validCount).toBe(1);
-    expect(val.duplicateCount).toBe(1);
+    expect(val.success).toBe(false);
+    expect(val.error).toContain('year');
   });
 
   it('8. Bulk import executes valid rows while safely reporting partial failures', async () => {
     const validRows = [
-      { rowNumber: 2, name: 'Student A', course: 'DCA', rollNumber: '001', username: 'bulk001', password: 'password123', isValid: true },
-      { rowNumber: 3, name: 'Student B', course: 'DCA', rollNumber: '002', username: 'bulk002', password: 'password123', isValid: true },
+      { rowNumber: 2, name: 'Student A', course: 'DCA', year: '1st Year', username: 'bulk001', password: 'password123', isValid: true },
+      { rowNumber: 3, name: 'Student B', course: 'DCA', year: '2nd Year', username: 'bulk002', password: 'password123', isValid: true },
     ];
 
     const exec = await executeBulkImport(adminId, validRows);
@@ -146,7 +144,7 @@ describe('Quizora DCA Quiz Platform — Step 3 Security & Auth Suite', () => {
     await createSingleUser(adminId, {
       name: 'Security Test',
       course: 'DCA',
-      rollNumber: 'SEC001',
+      year: '1st Year',
       username: 'sectest01',
       password: 'secretPassword123',
       role: 'STUDENT',
@@ -161,7 +159,7 @@ describe('Quizora DCA Quiz Platform — Step 3 Security & Auth Suite', () => {
     await createSingleUser(adminId, {
       name: 'Audit Test',
       course: 'DCA',
-      rollNumber: 'AUD001',
+      year: '1st Year',
       username: 'audtest01',
       password: 'superSecretPassword',
       role: 'STUDENT',
@@ -174,7 +172,7 @@ describe('Quizora DCA Quiz Platform — Step 3 Security & Auth Suite', () => {
 
   it('11. Audit logs record BULK_USERS_IMPORTED metadata without passwords', async () => {
     await executeBulkImport(adminId, [
-      { rowNumber: 2, name: 'Bulk Test', course: 'DCA', rollNumber: 'B01', username: 'btest01', password: 'secretPassword', isValid: true },
+      { rowNumber: 2, name: 'Bulk Test', course: 'DCA', year: '1st Year', username: 'btest01', password: 'secretPassword', isValid: true },
     ]);
 
     const audit = mockAuditLogs.find((l) => l.action === 'BULK_USERS_IMPORTED');

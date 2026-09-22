@@ -10,7 +10,7 @@ export type LoginInput = z.infer<typeof LoginSchema>;
 export const CreateUserSchema = z.object({
   name: z.string().min(2, { message: 'Name must be at least 2 characters' }),
   course: z.string().min(2, { message: 'Course is required' }),
-  rollNumber: z.string().min(2, { message: 'Roll number is required' }),
+  year: z.string().default('1st Year'),
   username: z
     .string()
     .min(3, { message: 'Username must be at least 3 characters' })

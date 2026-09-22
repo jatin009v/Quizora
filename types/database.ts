@@ -25,7 +25,7 @@ export interface Profile {
   auth_user_id: string;
   name: string;
   course: string;
-  roll_number: string;
+  year: string;
   username: string;
   role: UserRole;
   status: UserStatus;

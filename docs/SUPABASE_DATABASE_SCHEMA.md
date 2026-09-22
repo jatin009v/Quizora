@@ -36,7 +36,7 @@ Stores user profile information, role classification, course metadata, and linka
   - `auth_user_id`: UUID (Nullable for synthetic local mapping)
   - `name`: VARCHAR(255) NOT NULL
   - `course`: VARCHAR(100) NOT NULL
-  - `roll_number`: VARCHAR(100) NOT NULL
+  - `year`: VARCHAR(50) DEFAULT '1st Year'
   - `username`: VARCHAR(100) UNIQUE NOT NULL
   - `role`: `user_role` ENUM (`ADMIN`, `PROCTOR`, `STUDENT`)
   - `status`: `user_status` ENUM (`ACTIVE`, `DISABLED`)

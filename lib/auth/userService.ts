@@ -24,7 +24,7 @@ export async function createSingleUser(
   adminProfileId: string,
   input: CreateUserInput
 ): Promise<CreateUserResult> {
-  const { name, course, rollNumber, username, password, role = 'STUDENT' } = input;
+  const { name, course, year = '1st Year', username, password, role = 'STUDENT' } = input;
   const sanitizedUsername = username.toLowerCase().trim();
   const internalEmail = mapUsernameToInternalEmail(sanitizedUsername);
   const nowIso = new Date().toISOString();
@@ -66,7 +66,7 @@ export async function createSingleUser(
         auth_user_id: authUserId,
         name,
         course,
-        roll_number: rollNumber,
+        year,
         username: sanitizedUsername,
         role,
         status: 'ACTIVE',
@@ -83,7 +83,7 @@ export async function createSingleUser(
         action: 'USER_CREATED',
         target_type: 'PROFILE',
         target_id: profileId,
-        metadata: { name, username: sanitizedUsername, course, roll_number: rollNumber, role },
+        metadata: { name, username: sanitizedUsername, course, year, role },
         created_at: nowIso,
       });
 
@@ -122,7 +122,7 @@ export async function createSingleUser(
         auth_user_id: authUser.user.id,
         name,
         course,
-        roll_number: rollNumber,
+        year,
         username: sanitizedUsername,
         role,
         status: 'ACTIVE',
@@ -145,7 +145,7 @@ export async function createSingleUser(
       action: 'USER_CREATED',
       target_type: 'PROFILE',
       target_id: profileData.id,
-      metadata: { name, username: sanitizedUsername, course, roll_number: rollNumber, role },
+      metadata: { name, username: sanitizedUsername, course, year, role },
       created_at: nowIso,
     });
 

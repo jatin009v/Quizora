@@ -168,7 +168,7 @@ export default function ProctorAttemptDetailPage({ params }: { params: { attempt
           <div className="space-y-2 font-mono text-xs">
             <div><span className="text-slate-500">Name:</span> <strong className="text-brand-black">{student?.name}</strong></div>
             <div><span className="text-slate-500">Username:</span> <strong className="text-brand-black">{student?.username}</strong></div>
-            <div><span className="text-slate-500">Roll Number:</span> <strong className="text-brand-black">{student?.rollNumber}</strong></div>
+            <div><span className="text-slate-500">Academic Year:</span> <strong className="text-brand-black">{student?.year}</strong></div>
             <div><span className="text-slate-500">Course:</span> <strong className="text-brand-black">{student?.course}</strong></div>
           </div>
         </div>

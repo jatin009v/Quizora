@@ -2,10 +2,10 @@
 -- Run this script in the Supabase SQL Editor after applying all 5 migrations.
 
 -- 1. Create Default Admin and Proctor Profiles
-INSERT INTO public.profiles (id, name, course, roll_number, username, role, status)
+INSERT INTO public.profiles (id, name, course, year, username, role, status)
 VALUES 
-  ('00000000-0000-0000-0000-000000000001', 'System Administrator', 'DCA Administration', 'ADMIN-001', 'admin', 'ADMIN', 'ACTIVE'),
-  ('00000000-0000-0000-0000-000000000002', 'Chief Exam Proctor', 'DCA Examination Unit', 'PROC-001', 'proctor', 'PROCTOR', 'ACTIVE')
+  ('00000000-0000-0000-0000-000000000001', 'System Administrator', 'DCA Administration', '1st Year', 'admin', 'ADMIN', 'ACTIVE'),
+  ('00000000-0000-0000-0000-000000000002', 'Chief Exam Proctor', 'DCA Examination Unit', '1st Year', 'proctor', 'PROCTOR', 'ACTIVE')
 ON CONFLICT (username) DO NOTHING;
 
 -- 2. Insert Sample Question Bank (DCA Computer Fundamentals & Networking)

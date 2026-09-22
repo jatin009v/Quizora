@@ -120,7 +120,7 @@ export default function AdminResultsPage({ params }: { params: { paperId: string
                   <tr className="bg-warm-beige border-b-3 border-brand-black font-display font-black text-xs uppercase tracking-wider text-brand-black">
                     <th className="py-3.5 px-6">Rank</th>
                     <th className="py-3.5 px-6">Student Name</th>
-                    <th className="py-3.5 px-6">Roll Number</th>
+                    <th className="py-3.5 px-6">Username</th>
                     <th className="py-3.5 px-6">Course</th>
                     <th className="py-3.5 px-6">Score</th>
                     <th className="py-3.5 px-6">Percentage</th>
@@ -149,7 +149,7 @@ export default function AdminResultsPage({ params }: { params: { paperId: string
                         #{entry.rank}
                       </td>
                       <td className="py-4 px-6 font-bold text-brand-black">{entry.studentName}</td>
-                      <td className="py-4 px-6 font-mono text-xs">{entry.rollNumber}</td>
+                      <td className="py-4 px-6 font-mono text-xs">{entry.username}</td>
                       <td className="py-4 px-6">{entry.course}</td>
                       <td className="py-4 px-6 font-mono font-black text-burnt-orange">
                         {entry.score} / {entry.totalMarks}

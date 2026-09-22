@@ -6,7 +6,7 @@ async function bootstrapAccount(
   pass: string,
   name: string,
   course: string,
-  rollNumber: string,
+  year: string,
   role: 'ADMIN' | 'PROCTOR' | 'STUDENT'
 ) {
   const supabase = createAdminClient();
@@ -59,7 +59,7 @@ async function bootstrapAccount(
         auth_user_id: authUserId,
         name,
         course,
-        roll_number: rollNumber,
+        year,
         role,
         status: 'ACTIVE',
         updated_at: nowIso,
@@ -71,7 +71,7 @@ async function bootstrapAccount(
       auth_user_id: authUserId,
       name,
       course,
-      roll_number: rollNumber,
+      year,
       username,
       role,
       status: 'ACTIVE',
@@ -89,14 +89,14 @@ async function runBootstrap() {
 
   try {
     // 1. Bootstrap System Administrator
-    await bootstrapAccount('admin', 'admin123', 'System Administrator', 'DCA Administration', 'ADMIN-001', 'ADMIN');
+    await bootstrapAccount('admin', 'admin123', 'System Administrator', 'DCA Administration', '1st Year', 'ADMIN');
 
     // 2. Bootstrap Chief Exam Proctor
-    await bootstrapAccount('proctor', 'proctor123', 'Chief Exam Proctor', 'DCA Examination Unit', 'PROC-001', 'PROCTOR');
+    await bootstrapAccount('proctor', 'proctor123', 'Chief Exam Proctor', 'DCA Examination Unit', '1st Year', 'PROCTOR');
 
     // 3. Bootstrap Test Candidate Students
-    await bootstrapAccount('student1', 'student123', 'Alex Chen', 'DCA Computer Science', '2026-DCA-001', 'STUDENT');
-    await bootstrapAccount('student2', 'student123', 'Jordan Smith', 'DCA Computer Science', '2026-DCA-002', 'STUDENT');
+    await bootstrapAccount('student1', 'student123', 'Alex Chen', 'DCA Computer Science', '1st Year', 'STUDENT');
+    await bootstrapAccount('student2', 'student123', 'Jordan Smith', 'DCA Computer Science', '2nd Year', 'STUDENT');
 
     console.log('=====================================================');
     console.log('✅ BOOTSTRAP COMPLETE');

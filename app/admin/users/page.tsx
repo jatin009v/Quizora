@@ -156,7 +156,7 @@ export default function AdminUsersPage() {
                   <tr className="bg-warm-beige border-b-3 border-brand-black font-display font-black text-xs uppercase tracking-wider text-brand-black">
                     <th className="py-3.5 px-6">Name</th>
                     <th className="py-3.5 px-6">Username</th>
-                    <th className="py-3.5 px-6">Roll Number</th>
+                    <th className="py-3.5 px-6">Year</th>
                     <th className="py-3.5 px-6">Course</th>
                     <th className="py-3.5 px-6">Role</th>
                     <th className="py-3.5 px-6">Status</th>
@@ -170,7 +170,7 @@ export default function AdminUsersPage() {
                       <td className="py-4 px-6 font-mono text-xs text-burnt-orange font-bold">
                         {user.username}
                       </td>
-                      <td className="py-4 px-6 font-mono text-xs">{user.roll_number}</td>
+                      <td className="py-4 px-6 font-mono text-xs">{user.year}</td>
                       <td className="py-4 px-6">{user.course}</td>
                       <td className="py-4 px-6">
                         <span className="bg-brand-black text-white px-2 py-0.5 rounded text-[10px] font-mono font-bold uppercase">

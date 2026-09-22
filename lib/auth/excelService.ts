@@ -6,7 +6,7 @@ export interface ExcelRowPreview {
   rowNumber: number;
   name: string;
   course: string;
-  rollNumber: string;
+  year: string;
   username: string;
   password?: string; // Kept internal server-side during parse
   isValid: boolean;
@@ -70,13 +70,13 @@ export async function parseAndValidateExcel(buffer: Buffer): Promise<ExcelValida
     // Inspect headers
     const sample = rawData[0];
     const keys = Object.keys(sample).map((k) => k.toLowerCase().trim());
-    const requiredCols = ['name', 'course', 'roll_number', 'username', 'password'];
+    const requiredCols = ['name', 'course', 'year', 'username', 'password'];
 
     const missingCols = requiredCols.filter((col) => !keys.includes(col));
     if (missingCols.length > 0) {
       return {
         success: false,
-        error: `Excel header missing required column(s): ${missingCols.join(', ')}. Expected columns: name, course, roll_number, username, password.`,
+        error: `Excel header missing required column(s): ${missingCols.join(', ')}. Expected columns: name, course, year, username, password.`,
         totalRows: 0,
         validCount: 0,
         invalidCount: 0,
@@ -102,7 +102,6 @@ export async function parseAndValidateExcel(buffer: Buffer): Promise<ExcelValida
     }
 
     const fileUsernames = new Set<string>();
-    const fileRollNumbers = new Set<string>();
 
     const previewList: Omit<ExcelRowPreview, 'password'>[] = [];
     const internalValidRows: ExcelRowPreview[] = [];
@@ -122,14 +121,14 @@ export async function parseAndValidateExcel(buffer: Buffer): Promise<ExcelValida
 
       const name = rowData['name'] || '';
       const course = rowData['course'] || '';
-      const rollNumber = rowData['roll_number'] || rowData['rollnumber'] || '';
+      const year = rowData['year'] || '1st Year';
       const username = (rowData['username'] || '').toLowerCase();
       const password = rowData['password'] || '';
 
       let isValid = true;
       let reason = '';
 
-      if (!name || !course || !rollNumber || !username || !password) {
+      if (!name || !course || !year || !username || !password) {
         isValid = false;
         reason = 'Missing required field(s)';
       } else if (password.length < 6) {
@@ -143,22 +142,17 @@ export async function parseAndValidateExcel(buffer: Buffer): Promise<ExcelValida
         isValid = false;
         reason = 'Username already exists in database';
         duplicateCount++;
-      } else if (fileRollNumbers.has(rollNumber)) {
-        isValid = false;
-        reason = 'Duplicate roll number within Excel file';
-        duplicateCount++;
       }
 
       if (isValid) {
         fileUsernames.add(username);
-        fileRollNumbers.add(rollNumber);
         validCount++;
 
         internalValidRows.push({
           rowNumber: rowNum,
           name,
           course,
-          rollNumber,
+          year,
           username,
           password,
           isValid: true,
@@ -171,7 +165,7 @@ export async function parseAndValidateExcel(buffer: Buffer): Promise<ExcelValida
         rowNumber: rowNum,
         name,
         course,
-        rollNumber,
+        year,
         username,
         isValid,
         reason,
@@ -221,7 +215,7 @@ export async function executeBulkImport(
     const res = await createSingleUser(adminProfileId, {
       name: row.name,
       course: row.course,
-      rollNumber: row.rollNumber,
+      year: row.year,
       username: row.username,
       password: row.password,
       role: 'STUDENT',

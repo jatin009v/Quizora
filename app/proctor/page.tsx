@@ -209,7 +209,7 @@ export default function ProctorDashboardPage() {
                     <td className="p-4">
                       <div className="font-bold text-brand-black">{attempt.studentName}</div>
                       <div className="font-mono text-xs text-slate-500">
-                        @{attempt.username} • Roll: {attempt.rollNumber} ({attempt.course})
+                        @{attempt.username} • Year: {attempt.year} ({attempt.course})
                       </div>
                     </td>
                     <td className="p-4 font-medium text-slate-800">{attempt.paperTitle}</td>

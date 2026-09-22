@@ -33,22 +33,7 @@ export async function getAuthContext(): Promise<AuthContext | null> {
       .single();
 
     if (profileError || !profile) {
-      // Default demo profile for unseeded dev environments
-      return {
-        user: { id: user.id, email: user.email },
-        profile: {
-          id: user.id,
-          auth_user_id: user.id,
-          name: user.email?.split('@')[0] || 'User',
-          course: 'DCA Computer Science',
-          roll_number: '2026-DCA-001',
-          username: user.email?.split('@')[0] || 'student',
-          role: 'STUDENT',
-          status: 'ACTIVE',
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-        },
-      };
+      return null;
     }
 
     // Block disabled users from accessing active context

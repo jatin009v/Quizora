@@ -270,8 +270,8 @@ export async function getProctorDashboardSummary(paperId?: string) {
         eventTime: ev.event_time,
         questionIndex: ev.question_index,
         attemptId: ev.attempt_id,
-        studentName: 'Rahul Kumar',
-        username: 'rahul',
+        studentName: 'Test Student',
+        username: 'student',
         course: 'MCA',
         paperTitle: 'DCA Computer Fundamentals',
       })),
@@ -283,16 +283,12 @@ export async function getProctorDashboardSummary(paperId?: string) {
   let attemptQuery = adminClient.from('exam_attempts').select('id, status, tab_switch_count');
   if (paperId) attemptQuery = attemptQuery.eq('paper_id', paperId);
 
-  const { data: attempts, error: attemptErr } = await attemptQuery;
-  if (attemptErr) throw new Error(`Failed to fetch attempt metrics: ${attemptErr.message}`);
+  const { data: attempts } = await attemptQuery;
+  const { count: totalEvents } = await adminClient
+    .from('proctor_events')
+    .select('id', { count: 'exact', head: true });
 
-  const totalAttempts = attempts?.length || 0;
-  const activeCount = attempts?.filter((a) => a.status === 'IN_PROGRESS').length || 0;
-  const warningCount = attempts?.filter((a) => a.status === 'IN_PROGRESS' && a.tab_switch_count > 0).length || 0;
-  const lockedCount = attempts?.filter((a) => a.status === 'LOCKED').length || 0;
-  const submittedCount = attempts?.filter((a) => a.status === 'SUBMITTED').length || 0;
-
-  let eventsQuery = adminClient
+  const { data: recentEvs } = await adminClient
     .from('proctor_events')
     .select(`
       id,
@@ -300,31 +296,28 @@ export async function getProctorDashboardSummary(paperId?: string) {
       event_time,
       question_index,
       attempt_id,
-      profiles ( name, username, course ),
-      papers ( title )
+      profiles!inner ( name, username, course ),
+      papers!inner ( title )
     `)
     .order('event_time', { ascending: false })
     .limit(15);
 
-  if (paperId) eventsQuery = eventsQuery.eq('paper_id', paperId);
-
-  const { data: recentEvents } = await eventsQuery;
-
+  const allAttempts = attempts || [];
   return {
     summary: {
-      totalAttempts,
-      activeCount,
-      warningCount,
-      lockedCount,
-      submittedCount,
+      totalAttempts: allAttempts.length,
+      activeCount: allAttempts.filter((a) => a.status === 'IN_PROGRESS').length,
+      warningCount: allAttempts.filter((a) => a.status === 'IN_PROGRESS' && a.tab_switch_count > 0).length,
+      lockedCount: allAttempts.filter((a) => a.status === 'LOCKED').length,
+      submittedCount: allAttempts.filter((a) => a.status === 'SUBMITTED').length,
     },
-    recentEvents: (recentEvents || []).map((ev: any) => ({
+    recentEvents: (recentEvs || []).map((ev: any) => ({
       id: ev.id,
       eventType: ev.event_type,
       eventTime: ev.event_time,
       questionIndex: ev.question_index,
       attemptId: ev.attempt_id,
-      studentName: ev.profiles?.name || 'Unknown Student',
+      studentName: ev.profiles?.name || '',
       username: ev.profiles?.username || '',
       course: ev.profiles?.course || '',
       paperTitle: ev.papers?.title || '',
@@ -333,9 +326,9 @@ export async function getProctorDashboardSummary(paperId?: string) {
 }
 
 /**
- * Fetch filterable list of student attempts for Proctor monitoring table.
+ * List all student exam attempts for Proctor dashboard monitoring table with filtering.
  */
-export async function listProctorStudentAttempts(filters: ProctorAttemptFilter) {
+export async function listStudentAttempts(filters: Partial<ProctorAttemptFilter> = {}) {
   if (isTestOrLocal()) {
     const attempts = Array.from(mockExamStore.attempts.values());
     let items = attempts.map((attempt) => {
@@ -350,7 +343,7 @@ export async function listProctorStudentAttempts(filters: ProctorAttemptFilter) 
         paperId: attempt.paper_id,
         studentName: 'Test Student',
         username: 'student',
-        rollNumber: '2026-DCA-001',
+        year: '1st Year',
         course: 'DCA Computer Science',
         paperTitle: 'DCA Exam',
         rawStatus: attempt.status,
@@ -388,7 +381,7 @@ export async function listProctorStudentAttempts(filters: ProctorAttemptFilter) 
       fullscreen_exit_count,
       last_question_index,
       created_at,
-      profiles!inner ( id, name, username, roll_number, course ),
+      profiles!inner ( id, name, username, year, course ),
       papers!inner ( id, title, duration_minutes )
     `)
     .order('updated_at', { ascending: false });
@@ -411,7 +404,7 @@ export async function listProctorStudentAttempts(filters: ProctorAttemptFilter) 
       paperId: attempt.paper_id,
       studentName: attempt.profiles?.name || '',
       username: attempt.profiles?.username || '',
-      rollNumber: attempt.profiles?.roll_number || '',
+      year: attempt.profiles?.year || '',
       course: attempt.profiles?.course || '',
       paperTitle: attempt.papers?.title || '',
       rawStatus: attempt.status,
@@ -435,13 +428,14 @@ export async function listProctorStudentAttempts(filters: ProctorAttemptFilter) 
     items = items.filter(
       (item) =>
         item.studentName.toLowerCase().includes(s) ||
-        item.username.toLowerCase().includes(s) ||
-        item.rollNumber.toLowerCase().includes(s)
+        item.username.toLowerCase().includes(s)
     );
   }
 
   return items;
 }
+
+export const listProctorStudentAttempts = listStudentAttempts;
 
 /**
  * Fetch detailed attempt info and chronological integrity event timeline for Proctor.
@@ -482,7 +476,7 @@ export async function getProctorAttemptDetails(attemptId: string) {
         id: attempt.user_id,
         name: 'Test Student',
         username: 'student',
-        rollNumber: '2026-DCA-001',
+        year: '1st Year',
         course: 'DCA Computer Science',
       },
       paper: {
@@ -509,7 +503,7 @@ export async function getProctorAttemptDetails(attemptId: string) {
     .from('exam_attempts')
     .select(`
       *,
-      profiles ( id, name, username, roll_number, course, role, status ),
+      profiles ( id, name, username, year, course, role, status ),
       papers ( id, title, course, duration_minutes, total_marks, required_question_count )
     `)
     .eq('id', attemptId)
@@ -555,7 +549,7 @@ export async function getProctorAttemptDetails(attemptId: string) {
       id: attempt.profiles?.id,
       name: attempt.profiles?.name,
       username: attempt.profiles?.username,
-      rollNumber: attempt.profiles?.roll_number,
+      year: attempt.profiles?.year,
       course: attempt.profiles?.course,
     },
     paper: {
