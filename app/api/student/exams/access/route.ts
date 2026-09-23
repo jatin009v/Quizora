@@ -8,19 +8,22 @@ import { mockExamStore } from '@/lib/exam/service';
 export const dynamic = 'force-dynamic';
 
 export async function POST(req: NextRequest) {
+  const startTime = Date.now();
+  const requestId = req.headers.get('QUIZORA-REQUEST-ID') || crypto.randomUUID();
+
   try {
     const auth = await getAuthContext();
     if (!auth || auth.profile.role !== 'STUDENT') {
       return NextResponse.json(
         { success: false, error: 'Student authentication required' },
-        { status: 401 }
+        { status: 401, headers: { 'QUIZORA-REQUEST-ID': requestId } }
       );
     }
 
     if (auth.profile.status === 'DISABLED') {
       return NextResponse.json(
         { success: false, error: 'Student account is disabled.' },
-        { status: 403 }
+        { status: 403, headers: { 'QUIZORA-REQUEST-ID': requestId } }
       );
     }
 
@@ -31,12 +34,12 @@ export async function POST(req: NextRequest) {
     if (!normalizedCode) {
       return NextResponse.json(
         { success: false, error: 'Please enter an examination access code.' },
-        { status: 400 }
+        { status: 400, headers: { 'QUIZORA-REQUEST-ID': requestId } }
       );
     }
 
-    const now = new Date();
-    const nowMs = now.getTime();
+    const nowMs = Date.now();
+    let dbStart = Date.now();
     let paper: any = null;
 
     if (process.env.NODE_ENV === 'test' || !process.env.NEXT_PUBLIC_SUPABASE_URL?.includes('supabase.co')) {
@@ -55,34 +58,50 @@ export async function POST(req: NextRequest) {
 
       if (paperErr || !foundPaper) {
         return NextResponse.json(
-          { success: false, error: 'Invalid examination access code.' },
-          { status: 404 }
+          { success: false, error: 'Invalid or unavailable examination access code.' },
+          { status: 400, headers: { 'QUIZORA-REQUEST-ID': requestId } }
         );
       }
       paper = foundPaper;
     }
+    const dbMs = Date.now() - dbStart;
 
     if (!paper) {
       return NextResponse.json(
-        { success: false, error: 'Invalid examination access code.' },
-        { status: 404 }
+        { success: false, error: 'Invalid or unavailable examination access code.' },
+        { status: 400, headers: { 'QUIZORA-REQUEST-ID': requestId } }
       );
     }
 
-    // Schedule Access Window Validation
+    // 1. Course Eligibility Validation
+    if (
+      paper.course &&
+      auth.profile.course &&
+      paper.course.trim().toUpperCase() !== auth.profile.course.trim().toUpperCase()
+    ) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: `This examination is reserved for ${paper.course} students. Your profile course is ${auth.profile.course}.`,
+        },
+        { status: 403, headers: { 'QUIZORA-REQUEST-ID': requestId } }
+      );
+    }
+
+    // 2. Schedule Access Window Validation
     if (paper.start_at && nowMs < new Date(paper.start_at).getTime()) {
       return NextResponse.json(
         { success: false, error: 'Exam access has not started yet. Please contact your administrator.' },
-        { status: 400 }
+        { status: 425, headers: { 'QUIZORA-REQUEST-ID': requestId } }
       );
     }
 
-    // Check if student has existing IN_PROGRESS attempt
+    // 3. Check for existing attempt before schedule expiry rejection
     let existingAttempt: any = null;
     if (process.env.NODE_ENV === 'test' || !process.env.NEXT_PUBLIC_SUPABASE_URL?.includes('supabase.co')) {
       const attempts = Array.from(mockExamStore.attempts.values());
       existingAttempt = attempts.find(
-        (a) => a.user_id === auth.profile.id && a.paper_id === paper.id && a.status === 'IN_PROGRESS'
+        (a) => a.user_id === auth.profile.id && a.paper_id === paper.id
       );
     } else {
       const supabase = createAdminClient();
@@ -91,28 +110,69 @@ export async function POST(req: NextRequest) {
         .select('id, status, expires_at')
         .eq('user_id', auth.profile.id)
         .eq('paper_id', paper.id)
-        .eq('status', 'IN_PROGRESS')
         .maybeSingle();
       existingAttempt = attData;
+    }
+
+    if (existingAttempt) {
+      if (existingAttempt.status === 'SUBMITTED') {
+        return NextResponse.json(
+          { success: false, error: 'You have already submitted this exam.' },
+          { status: 409, headers: { 'QUIZORA-REQUEST-ID': requestId } }
+        );
+      }
+      if (existingAttempt.status === 'LOCKED') {
+        return NextResponse.json(
+          { success: false, error: 'This exam attempt has been locked by the proctor.' },
+          { status: 409, headers: { 'QUIZORA-REQUEST-ID': requestId } }
+        );
+      }
     }
 
     // If after end_at AND student has NO active attempt -> reject expired code
     if (paper.end_at && nowMs > new Date(paper.end_at).getTime() && !existingAttempt) {
       return NextResponse.json(
         { success: false, error: 'Exam access has closed. The access code has expired. Please contact your administrator.' },
-        { status: 400 }
+        { status: 410, headers: { 'QUIZORA-REQUEST-ID': requestId } }
       );
     }
 
-    // Start or recover attempt
+    // 4. Start or recover attempt atomically
+    const attemptStart = Date.now();
     const attemptResult = await createOrRecoverExamAttempt(auth.profile.id, paper.id);
+    const attemptMs = Date.now() - attemptStart;
+    const totalMs = Date.now() - startTime;
 
     if (!attemptResult.success || !attemptResult.data) {
+      let httpStatus = 400;
+      if (attemptResult.code === 'ATTEMPT_SUBMITTED' || attemptResult.code === 'ATTEMPT_LOCKED') {
+        httpStatus = 409;
+      }
+
+      console.error('[EXAM_ACCESS_ERROR]', {
+        requestId,
+        studentId: auth.profile.id,
+        paperId: paper.id,
+        code: attemptResult.code,
+        message: attemptResult.error,
+        httpStatus,
+      });
+
       return NextResponse.json(
         { success: false, error: attemptResult.error || 'Failed to initialize exam attempt.' },
-        { status: 400 }
+        { status: httpStatus, headers: { 'QUIZORA-REQUEST-ID': requestId } }
       );
     }
+
+    console.info('[EXAM_ACCESS]', {
+      requestId,
+      paperId: paper.id,
+      studentId: auth.profile.id,
+      dbMs,
+      attemptMs,
+      totalMs,
+      status: 200,
+    });
 
     return NextResponse.json(
       {
@@ -120,13 +180,23 @@ export async function POST(req: NextRequest) {
         paperId: paper.id,
         attemptId: attemptResult.data.attemptId,
         status: attemptResult.data.status,
+        data: {
+          paperId: paper.id,
+          attemptId: attemptResult.data.attemptId,
+          status: attemptResult.data.status,
+        },
       },
-      { status: 200 }
+      { status: 200, headers: { 'QUIZORA-REQUEST-ID': requestId } }
     );
   } catch (err: any) {
+    console.error('[EXAM_ACCESS_UNCAUGHT_ERROR]', {
+      requestId,
+      error: err.message,
+    });
+
     return NextResponse.json(
       { success: false, error: err.message || 'Internal server error' },
-      { status: 500 }
+      { status: 500, headers: { 'QUIZORA-REQUEST-ID': requestId } }
     );
   }
 }

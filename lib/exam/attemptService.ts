@@ -329,6 +329,31 @@ export async function createOrRecoverExamAttempt(
         .single();
 
       if (insertError || !insertedData) {
+        if (insertError?.code === '23505') {
+          // Idempotent recovery for concurrent insert race condition
+          const { data: recovered } = await supabase
+            .from('exam_attempts')
+            .select('*')
+            .eq('user_id', userId)
+            .eq('paper_id', paperId)
+            .maybeSingle();
+
+          if (recovered) {
+            const recAttempt = recovered as ExamAttempt;
+            return {
+              success: true,
+              data: {
+                attemptId: recAttempt.id,
+                paperId: recAttempt.paper_id,
+                status: recAttempt.status,
+                startedAt: recAttempt.started_at || nowIso,
+                expiresAt: recAttempt.expires_at || new Date(nowMs + paper.duration_minutes * 60000).toISOString(),
+                durationMinutes: paper.duration_minutes,
+              },
+            };
+          }
+        }
+
         console.error('[EXAM_ATTEMPT_INSERT_ERROR]', {
           paper_id: paperId,
           user_id: userId,

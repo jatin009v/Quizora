@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   ShieldAlert,
   Users,
@@ -28,16 +28,30 @@ export default function ProctorDashboardPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [error, setError] = useState<string | null>(null);
 
-  const fetchData = async () => {
+  const abortControllerRef = useRef<AbortController | null>(null);
+
+  const fetchData = useCallback(async () => {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+
     try {
       setRefreshing(true);
       const [summaryRes, attemptsRes] = await Promise.all([
-        fetch('/api/proctor/dashboard'),
-        fetch(`/api/proctor/attempts?status=${statusFilter}&search=${encodeURIComponent(searchQuery)}`),
+        fetch('/api/proctor/dashboard', { signal: controller.signal }),
+        fetch(`/api/proctor/attempts?status=${statusFilter}&search=${encodeURIComponent(searchQuery)}`, {
+          signal: controller.signal,
+        }),
       ]);
+
+      if (controller.signal.aborted) return;
 
       const summaryJson = await summaryRes.json();
       const attemptsJson = await attemptsRes.json();
+
+      if (controller.signal.aborted) return;
 
       if (summaryRes.ok && summaryJson.success) {
         setMetrics(summaryJson.data);
@@ -47,19 +61,27 @@ export default function ProctorDashboardPage() {
       } else {
         setError(attemptsJson.error || 'Failed to load student attempts.');
       }
-    } catch {
+    } catch (err: any) {
+      if (err.name === 'AbortError') return;
       setError('Network error fetching proctor monitoring data.');
     } finally {
-      setLoading(false);
-      setRefreshing(false);
+      if (!controller.signal.aborted) {
+        setLoading(false);
+        setRefreshing(false);
+      }
     }
-  };
+  }, [statusFilter, searchQuery]);
 
   useEffect(() => {
     fetchData();
-    const timer = setInterval(fetchData, 5000); // 5-second near-realtime poll fallback
-    return () => clearInterval(timer);
-  }, [statusFilter, searchQuery]);
+    const timer = setInterval(fetchData, 5000);
+    return () => {
+      clearInterval(timer);
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+      }
+    };
+  }, [fetchData]);
 
   if (loading) {
     return (

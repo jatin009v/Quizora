@@ -55,6 +55,7 @@ export default function StudentDashboardPage() {
 
   const handleVerifyAccessCode = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (validatingCode) return;
     setAccessError(null);
 
     if (!accessCodeInput.trim()) {
@@ -75,12 +76,18 @@ export default function StudentDashboardPage() {
 
       if (res.ok && json.success) {
         setShowAccessModal(false);
-        router.push(`/student/exam/start/${json.data.paperId}`);
+        const attemptId = json.attemptId || json.data?.attemptId;
+        const paperId = json.paperId || json.data?.paperId;
+        if (attemptId) {
+          router.push(`/student/exam/${attemptId}`);
+        } else if (paperId) {
+          router.push(`/student/exam/start/${paperId}`);
+        }
       } else {
         setAccessError(json.error || 'Invalid or unavailable exam code.');
       }
     } catch {
-      setAccessError('Network error validating code.');
+      setAccessError('Unable to connect to exam server. Please check your network connection.');
     } finally {
       setValidatingCode(false);
     }
@@ -269,7 +276,7 @@ export default function StudentDashboardPage() {
                   className="w-full p-4 bg-slate-50 border-3 border-brand-black rounded-xl font-mono text-center font-bold text-2xl tracking-widest text-burnt-orange focus:outline-none focus:ring-2 focus:ring-burnt-orange uppercase"
                 />
 
-                <MagneticButton variant="primary" size="lg" className="w-full justify-center">
+                <MagneticButton variant="primary" size="lg" className="w-full justify-center" disabled={validatingCode}>
                   {validatingCode ? 'Verifying Code...' : 'Verify Access Code & Begin'}
                 </MagneticButton>
               </form>
