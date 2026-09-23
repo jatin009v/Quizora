@@ -72,7 +72,7 @@ export default function LoginPage() {
           </div>
 
           <span className="bg-warm-beige text-brand-black px-2.5 py-1 rounded font-mono text-[10px] font-bold border-2 border-brand-black uppercase">
-            Step 3 Auth
+            Portal Auth
           </span>
         </div>
 
@@ -86,7 +86,7 @@ export default function LoginPage() {
               <User className="w-4 h-4 absolute left-3.5 top-3.5 text-slate-400" />
               <input
                 type="text"
-                placeholder="Enter assigned username (e.g. jatin001)"
+                placeholder="Enter assigned username"
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
                 required
@@ -129,18 +129,11 @@ export default function LoginPage() {
           </MagneticButton>
         </form>
 
-        {/* FOOTER & DEMO HELPER */}
-        <div className="pt-4 border-t-2 border-slate-200 text-center space-y-2">
-          <p className="text-xs text-slate-500 font-sans">
-            Credentials are provided by your institution administrator.
+        {/* FOOTER */}
+        <div className="pt-4 border-t-2 border-slate-200 text-center">
+          <p className="text-xs text-slate-600 font-sans font-medium">
+            Enter your assigned credentials correctly. Best of luck!
           </p>
-          <div className="bg-warm-beige p-3 rounded-xl border-2 border-brand-black text-[11px] font-mono text-left space-y-1">
-            <span className="font-bold text-brand-black block">Quick Test Logins:</span>
-            <div className="text-slate-700 flex justify-between">
-              <span>Admin: <strong className="text-burnt-orange">admin</strong></span>
-              <span>Student: <strong className="text-vibrant-pink">riyapandey</strong></span>
-            </div>
-          </div>
         </div>
       </div>
     </div>

@@ -3,6 +3,13 @@ import { CreatePaperInput } from '@/lib/validation/paper';
 import { Paper, PaperQuestion, Question } from '@/types/database';
 import { mockExamStore } from './service';
 
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+export function isUuid(str: string | null | undefined): boolean {
+  if (!str) return false;
+  return UUID_REGEX.test(str);
+}
+
 export interface PaperServiceResult {
   success: boolean;
   error?: string;
@@ -23,22 +30,59 @@ export async function createOrUpdatePaperDraft(
     requiredQuestionCount,
     totalMarks,
     markingMode,
+    accessCode,
     startAt,
     endAt,
+    showResultToStudent = false,
+    shuffleQuestions = true,
     status = 'DRAFT',
     selectedQuestions,
   } = input;
 
-  // 1. Validation: Selected question count must match required question count
-  if (selectedQuestions.length !== requiredQuestionCount) {
+  const selectedQuestionsArr = selectedQuestions || [];
+  const normalizedAccessCode = accessCode ? accessCode.trim().toUpperCase() : null;
+
+  // Schedule Validation: startAt must be before endAt
+  if (startAt && endAt && new Date(startAt).getTime() >= new Date(endAt).getTime()) {
     return {
       success: false,
-      error: `Selected questions count (${selectedQuestions.length}) does not match required questions count (${requiredQuestionCount}).`,
+      error: 'Exam access start time must be before end time.',
     };
   }
 
+  // Check access code uniqueness if provided
+  if (normalizedAccessCode) {
+    if (process.env.NODE_ENV === 'test' || !process.env.NEXT_PUBLIC_SUPABASE_URL?.includes('supabase.co')) {
+      for (const [pId, p] of mockExamStore.papers.entries()) {
+        if (pId !== paperIdInput && p.access_code && p.access_code.toUpperCase() === normalizedAccessCode) {
+          return {
+            success: false,
+            error: 'This access code is already in use. Please choose another code.',
+          };
+        }
+      }
+    }
+  }
+
+  // 1. Validation: PUBLISHED status requires exact required question count; DRAFT allows 0 or partial
+  if (status === 'PUBLISHED') {
+    if (selectedQuestionsArr.length !== requiredQuestionCount) {
+      return {
+        success: false,
+        error: `Cannot publish paper: selected questions count (${selectedQuestionsArr.length}) does not match required questions count (${requiredQuestionCount}).`,
+      };
+    }
+  } else {
+    if (selectedQuestionsArr.length > requiredQuestionCount) {
+      return {
+        success: false,
+        error: `Selected questions count (${selectedQuestionsArr.length}) exceeds required questions count (${requiredQuestionCount}).`,
+      };
+    }
+  }
+
   // 2. Validation: Prevent duplicate question selections
-  const questionIds = selectedQuestions.map((q) => q.questionId);
+  const questionIds = selectedQuestionsArr.map((q) => q.questionId);
   const uniqueQuestionIds = new Set(questionIds);
   if (uniqueQuestionIds.size !== questionIds.length) {
     return {
@@ -48,14 +92,14 @@ export async function createOrUpdatePaperDraft(
   }
 
   // 3. Calculation of per-question marks
-  // In EQUAL_MARKS mode: question mark = totalMarks / requiredQuestionCount
-  const perQuestionMark = Number((totalMarks / requiredQuestionCount).toFixed(2));
+  const perQuestionMark = requiredQuestionCount > 0 ? Number((totalMarks / requiredQuestionCount).toFixed(2)) : 1;
 
   const nowIso = new Date().toISOString();
-  const paperId = paperIdInput || `paper-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+  const isUpdating = isUuid(paperIdInput);
 
   // Test / Isolated execution handling
   if (process.env.NODE_ENV === 'test' || !process.env.NEXT_PUBLIC_SUPABASE_URL?.includes('supabase.co')) {
+    const paperId = paperIdInput || crypto.randomUUID();
     const paperObj: Paper = {
       id: paperId,
       title,
@@ -64,11 +108,13 @@ export async function createOrUpdatePaperDraft(
       duration_minutes: durationMinutes,
       total_marks: totalMarks,
       required_question_count: requiredQuestionCount,
-      marking_mode: markingMode,
-      status,
-      access_code: null,
+      marking_mode: markingMode || 'EQUAL_MARKS',
+      status: status || 'DRAFT',
+      access_code: normalizedAccessCode,
       start_at: startAt || null,
       end_at: endAt || null,
+      show_result_to_student: showResultToStudent,
+      shuffle_questions: shuffleQuestions,
       created_by: adminProfileId, // STRICT SERVER-SIDE AUTHORIZED CREATOR
       published_at: status === 'PUBLISHED' ? nowIso : null,
       created_at: nowIso,
@@ -76,9 +122,10 @@ export async function createOrUpdatePaperDraft(
     };
 
     // Store in mock store
+    mockExamStore.papers.set(paperId, paperObj);
     mockExamStore.paperQuestions.set(
       paperId,
-      selectedQuestions.map((q) => q.questionId)
+      selectedQuestionsArr.map((q) => q.questionId)
     );
 
     return {
@@ -91,55 +138,95 @@ export async function createOrUpdatePaperDraft(
   const supabase = createAdminClient();
 
   try {
-    // Upsert paper with authenticated admin created_by
-    const { data: paperData, error: paperError } = await supabase
-      .from('papers')
-      .upsert({
-        id: paperId,
-        title,
-        description: description || null,
-        course,
-        duration_minutes: durationMinutes,
-        total_marks: totalMarks,
-        required_question_count: requiredQuestionCount,
-        marking_mode: markingMode,
-        status,
-        start_at: startAt || null,
-        end_at: endAt || null,
-        created_by: adminProfileId, // STRICT SERVER-SIDE AUTHORIZED CREATOR
-        updated_at: nowIso,
-      })
-      .select()
-      .single();
+    let paperData: any = null;
+    let paperError: any = null;
+
+    if (isUpdating) {
+      // Upsert existing paper row with validated UUID
+      const res = await supabase
+        .from('papers')
+        .upsert({
+          id: paperIdInput!,
+          title,
+          description: description || null,
+          course,
+          duration_minutes: durationMinutes,
+          total_marks: totalMarks,
+          required_question_count: requiredQuestionCount,
+          marking_mode: markingMode,
+          status,
+          access_code: normalizedAccessCode,
+          start_at: startAt || null,
+          end_at: endAt || null,
+          show_result_to_student: showResultToStudent,
+          shuffle_questions: shuffleQuestions,
+          created_by: adminProfileId,
+          updated_at: nowIso,
+        })
+        .select()
+        .single();
+      paperData = res.data;
+      paperError = res.error;
+    } else {
+      // Insert new paper row without passing id (Postgres automatically assigns gen_random_uuid())
+      const res = await supabase
+        .from('papers')
+        .insert({
+          title,
+          description: description || null,
+          course,
+          duration_minutes: durationMinutes,
+          total_marks: totalMarks,
+          required_question_count: requiredQuestionCount,
+          marking_mode: markingMode,
+          status,
+          access_code: normalizedAccessCode,
+          start_at: startAt || null,
+          end_at: endAt || null,
+          show_result_to_student: showResultToStudent,
+          shuffle_questions: shuffleQuestions,
+          created_by: adminProfileId,
+          created_at: nowIso,
+          updated_at: nowIso,
+        })
+        .select()
+        .single();
+      paperData = res.data;
+      paperError = res.error;
+    }
 
     if (paperError || !paperData) {
-      console.error('Paper upsert error:', paperError);
+      console.error('Paper save error:', paperError);
       return { success: false, error: paperError?.message || 'Failed to save paper draft' };
     }
 
+    const realPaperId = paperData.id;
+
     // Delete existing paper_questions mapping if updating
-    await supabase.from('paper_questions').delete().eq('paper_id', paperId);
+    await supabase.from('paper_questions').delete().eq('paper_id', realPaperId);
 
-    // Insert new ordered paper_questions
-    const paperQuestionsToInsert = selectedQuestions.map((sq, idx) => ({
-      paper_id: paperId,
-      question_id: sq.questionId,
-      question_order: sq.questionOrder || idx + 1,
-      marks: markingMode === 'EQUAL_MARKS' ? perQuestionMark : sq.marks || perQuestionMark,
-    }));
+    // Insert new ordered paper_questions if any exist
+    if (selectedQuestionsArr.length > 0) {
+      const paperQuestionsToInsert = selectedQuestionsArr.map((sq, idx) => ({
+        paper_id: realPaperId,
+        question_id: sq.questionId,
+        question_order: sq.questionOrder || idx + 1,
+        marks: markingMode === 'EQUAL_MARKS' ? perQuestionMark : sq.marks || perQuestionMark,
+      }));
 
-    const { error: pqError } = await supabase
-      .from('paper_questions')
-      .insert(paperQuestionsToInsert);
+      const { error: pqError } = await supabase
+        .from('paper_questions')
+        .insert(paperQuestionsToInsert);
 
-    if (pqError) {
-      console.error('Paper questions insert error:', pqError);
-      return { success: false, error: 'Failed to assign paper questions' };
+      if (pqError) {
+        console.error('Paper questions insert error:', pqError);
+        return { success: false, error: 'Failed to assign paper questions' };
+      }
     }
 
     return {
       success: true,
-      paperId,
+      paperId: realPaperId,
       data: paperData,
     };
   } catch (err: any) {
@@ -152,7 +239,7 @@ export async function listPapersForAdmin(): Promise<{ success: boolean; papers: 
   const supabase = createAdminClient();
   try {
     if (process.env.NODE_ENV === 'test' || !process.env.NEXT_PUBLIC_SUPABASE_URL?.includes('supabase.co')) {
-      return { success: true, papers: [] };
+      return { success: true, papers: Array.from(mockExamStore.papers.values()) };
     }
 
     const { data, error } = await supabase
@@ -189,8 +276,13 @@ export async function deletePaper(
         mockExamStore.answers.delete(a.id);
       });
       mockExamStore.paperQuestions.delete(paperId);
+      mockExamStore.papers.delete(paperId);
 
       return { success: true };
+    }
+
+    if (!isUuid(paperId)) {
+      return { success: false, error: 'Invalid paper ID reference.' };
     }
 
     // 1. Verify paper exists

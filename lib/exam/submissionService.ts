@@ -100,15 +100,15 @@ export async function submitExamAttempt(
 
     const perQuestionMark = paperQuestions.length > 0 ? totalPaperMarks / paperQuestions.length : 1;
 
-    paperQuestions.forEach((pq) => {
-      const question = pq.questions;
-      if (!question) return;
+    paperQuestions.forEach((pq: any) => {
+      const qId = pq.id || pq.question_id;
+      const correctOption = pq.correct_option || pq.questions?.correct_option;
+      if (!correctOption) return;
 
-      const studentAns = answerMap.get(question.id);
-      // Use equal per-question weighting derived from totalPaperMarks / paperQuestions.length
+      const studentAns = answerMap.get(qId) || (pq.question_id ? answerMap.get(pq.question_id) : undefined);
       const questionMark = perQuestionMark;
 
-      if (studentAns && studentAns.selected_option === question.correct_option) {
+      if (studentAns && studentAns.selected_option === correctOption) {
         totalScore += Number(questionMark);
         studentAns.is_correct = true;
         studentAns.marks_awarded = questionMark;

@@ -83,7 +83,7 @@ export default function AdminDashboardPage() {
         </div>
 
         {/* METRICS GRID */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
           <div className="bg-white p-6 rounded-2xl border-3 border-brand-black shadow-editorial flex flex-col justify-between">
             <div>
               <div className="flex items-center justify-between">
@@ -113,19 +113,6 @@ export default function AdminDashboardPage() {
           <div className="bg-white p-6 rounded-2xl border-3 border-brand-black shadow-editorial flex flex-col justify-between">
             <div>
               <div className="flex items-center justify-between">
-                <span className="text-xs font-mono font-bold text-slate-500 uppercase">Question Bank</span>
-                <HelpCircle className="w-5 h-5 text-deep-blue" />
-              </div>
-              <p className="font-display font-black text-4xl text-brand-black mt-2">
-                {loading ? '...' : stats.totalQuestions}
-              </p>
-            </div>
-            <p className="text-xs text-slate-500 mt-4 font-medium">Available MCQs</p>
-          </div>
-
-          <div className="bg-white p-6 rounded-2xl border-3 border-brand-black shadow-editorial flex flex-col justify-between">
-            <div>
-              <div className="flex items-center justify-between">
                 <span className="text-xs font-mono font-bold text-slate-500 uppercase">Proctor Integrity</span>
                 <Shield className="w-5 h-5 text-emerald-600" />
               </div>
@@ -141,16 +128,16 @@ export default function AdminDashboardPage() {
             Platform Operations & Management
           </h2>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             {/* MODULE 1: PAPER BUILDER */}
             <div className="bg-white p-6 rounded-2xl border-3 border-brand-black shadow-editorial flex flex-col justify-between group hover:border-burnt-orange transition-colors">
               <div>
                 <div className="w-12 h-12 bg-burnt-orange text-white rounded-xl flex items-center justify-center border-2 border-brand-black shadow-editorial mb-4">
                   <FileText className="w-6 h-6" />
                 </div>
-                <h3 className="font-display font-black text-2xl uppercase text-brand-black">Paper Builder</h3>
+                <h3 className="font-display font-black text-2xl uppercase text-brand-black">Paper Builder & Questions</h3>
                 <p className="text-sm text-slate-600 mt-2">
-                  Build exam papers, configure question order, duration, custom marks, and generate secure access codes.
+                  Build exam papers, create paper-centric questions directly inside papers, configure schedules, and generate access codes.
                 </p>
               </div>
 
@@ -172,30 +159,7 @@ export default function AdminDashboardPage() {
               </div>
             </div>
 
-            {/* MODULE 2: QUESTION BANK */}
-            <div className="bg-white p-6 rounded-2xl border-3 border-brand-black shadow-editorial flex flex-col justify-between group hover:border-deep-blue transition-colors">
-              <div>
-                <div className="w-12 h-12 bg-deep-blue text-white rounded-xl flex items-center justify-center border-2 border-brand-black shadow-editorial mb-4">
-                  <HelpCircle className="w-6 h-6" />
-                </div>
-                <h3 className="font-display font-black text-2xl uppercase text-brand-black">Question Bank</h3>
-                <p className="text-sm text-slate-600 mt-2">
-                  Create, search, filter, and organize MCQ questions, explanations, difficulty ratings, and option sets.
-                </p>
-              </div>
-
-              <div className="mt-6 space-y-2 pt-4 border-t-2 border-slate-100">
-                <Link
-                  href="/admin/questions"
-                  className="flex items-center justify-between text-sm font-bold text-deep-blue hover:underline"
-                >
-                  <span>Open Question Bank & Add MCQs</span>
-                  <ArrowRight className="w-4 h-4" />
-                </Link>
-              </div>
-            </div>
-
-            {/* MODULE 3: USER MANAGEMENT */}
+            {/* MODULE 2: USER MANAGEMENT */}
             <div className="bg-white p-6 rounded-2xl border-3 border-brand-black shadow-editorial flex flex-col justify-between group hover:border-vibrant-pink transition-colors">
               <div>
                 <div className="w-12 h-12 bg-vibrant-pink text-white rounded-xl flex items-center justify-center border-2 border-brand-black shadow-editorial mb-4">

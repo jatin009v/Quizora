@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { PaperLeaderboardResult } from '@/lib/exam/leaderboardService';
 import { MagneticButton } from '@/components/ui/MagneticButton';
-import { Award, Trophy, Users, Clock, ArrowLeft, RefreshCw, AlertCircle } from 'lucide-react';
+import { Award, Trophy, Users, Clock, ArrowLeft, RefreshCw, AlertCircle, Download } from 'lucide-react';
 import Link from 'next/link';
 
 export default function AdminResultsPage({ params }: { params: { paperId: string } }) {
@@ -49,12 +49,22 @@ export default function AdminResultsPage({ params }: { params: { paperId: string
             </div>
           </div>
 
-          <button
-            onClick={fetchResults}
-            className="px-4 py-2.5 bg-white border-2 border-brand-black rounded-lg font-mono text-xs font-bold uppercase shadow-editorial hover:bg-warm-beige flex items-center gap-2 cursor-pointer"
-          >
-            <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} /> Refresh Leaderboard
-          </button>
+          <div className="flex items-center gap-3">
+            <a
+              href={`/api/admin/papers/${params.paperId}/export-csv`}
+              download
+              className="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white border-2 border-brand-black rounded-lg font-mono text-xs font-bold uppercase shadow-editorial flex items-center gap-2 cursor-pointer transition-colors"
+            >
+              <Download className="w-4 h-4" /> Download Results CSV
+            </a>
+
+            <button
+              onClick={fetchResults}
+              className="px-4 py-2.5 bg-white border-2 border-brand-black rounded-lg font-mono text-xs font-bold uppercase shadow-editorial hover:bg-warm-beige flex items-center gap-2 cursor-pointer"
+            >
+              <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} /> Refresh Leaderboard
+            </button>
+          </div>
         </div>
 
         {/* ANALYTICS SUMMARY CARDS */}

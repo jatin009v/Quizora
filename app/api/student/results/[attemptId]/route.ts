@@ -20,7 +20,7 @@ export async function GET(
 
     const { data: attempt, error } = await supabase
       .from('exam_attempts')
-      .select('*, papers(title, course, total_marks), profiles(name, course, username)')
+      .select('*, papers(title, course, total_marks, show_result_to_student), profiles(name, course, username)')
       .eq('id', attemptId)
       .single();
 
@@ -33,6 +33,28 @@ export async function GET(
       return NextResponse.json(
         { success: false, error: 'Unauthorized result access' },
         { status: 403 }
+      );
+    }
+
+    // SERVER-SIDE RESULT VISIBILITY ENFORCEMENT FOR STUDENTS
+    if (auth.profile.role === 'STUDENT' && attempt.papers && attempt.papers.show_result_to_student === false) {
+      return NextResponse.json(
+        {
+          success: true,
+          resultHidden: true,
+          data: {
+            attemptId: attempt.id,
+            paperTitle: attempt.papers?.title || 'DCA Exam',
+            studentName: attempt.profiles?.name || auth.profile.name,
+            course: attempt.profiles?.course || auth.profile.course,
+            username: attempt.profiles?.username || auth.profile.username,
+            status: attempt.status,
+            submittedAt: attempt.submitted_at,
+            resultHidden: true,
+            message: 'Exam submitted successfully. Score & result details will be published by your administrator.',
+          },
+        },
+        { status: 200 }
       );
     }
 

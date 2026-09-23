@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getAuthContext } from '@/lib/auth/session';
 import { CreatePaperSchema } from '@/lib/validation/paper';
-import { createOrUpdatePaperDraft, listPapersForAdmin } from '@/lib/exam/paperService';
+import { createOrUpdatePaperDraft, listPapersForAdmin, isUuid } from '@/lib/exam/paperService';
 
 export const dynamic = 'force-dynamic';
 
@@ -36,6 +36,10 @@ export async function POST(req: NextRequest) {
     }
 
     const body = await req.json();
+    if (body.id && !isUuid(body.id)) {
+      delete body.id;
+    }
+
     const validation = CreatePaperSchema.safeParse(body);
 
     if (!validation.success) {

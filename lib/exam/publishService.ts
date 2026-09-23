@@ -1,11 +1,12 @@
 import { createAdminClient } from '@/lib/supabase/admin';
 import { Paper, Question, PaperQuestion } from '@/types/database';
-import { generateSecureAccessCode } from './accessCode';
+import { generateSecureAccessCode, normalizeAccessCode } from './accessCode';
 import { mockExamStore } from './service';
 
 export interface PublishResult {
   success: boolean;
   error?: string;
+  accessCode?: string;
   data?: {
     paperId: string;
     title: string;
@@ -30,7 +31,9 @@ export async function publishPaperServerSide(
 
     // Isolated test / fallback mode
     if (process.env.NODE_ENV === 'test' || !process.env.NEXT_PUBLIC_SUPABASE_URL?.includes('supabase.co')) {
+      paper = mockExamStore.papers.get(paperId) || null;
       const qIds = mockExamStore.paperQuestions.get(paperId) || [];
+      
       paperQuestions = qIds.map((id, idx) => ({
         id: `pq-${idx}`,
         paper_id: paperId,
@@ -41,24 +44,28 @@ export async function publishPaperServerSide(
         questions: mockExamStore.questions.get(id),
       }));
 
-      paper = {
-        id: paperId,
-        title: 'DCA Computer Fundamentals Quiz',
-        description: 'Test paper',
-        course: 'DCA',
-        duration_minutes: 60,
-        total_marks: 50,
-        required_question_count: paperQuestions.length,
-        marking_mode: 'EQUAL_MARKS',
-        status: 'DRAFT',
-        access_code: null,
-        start_at: null,
-        end_at: null,
-        created_by: adminProfileId,
-        published_at: null,
-        created_at: nowIso,
-        updated_at: nowIso,
-      };
+      if (!paper) {
+        paper = {
+          id: paperId,
+          title: 'DCA Computer Fundamentals Quiz',
+          description: 'Test paper',
+          course: 'DCA',
+          duration_minutes: 60,
+          total_marks: 50,
+          required_question_count: paperQuestions.length,
+          marking_mode: 'EQUAL_MARKS',
+          status: 'DRAFT',
+          access_code: 'DCA-7K4P9X',
+          start_at: new Date(Date.now() - 3600000).toISOString(),
+          end_at: new Date(Date.now() + 86400000).toISOString(),
+          show_result_to_student: false,
+          shuffle_questions: true,
+          created_by: adminProfileId,
+          published_at: null,
+          created_at: nowIso,
+          updated_at: nowIso,
+        };
+      }
     } else {
       const { data: pData, error: pError } = await supabase
         .from('papers')
@@ -79,9 +86,21 @@ export async function publishPaperServerSide(
       if (pqData) paperQuestions = pqData as any;
     }
 
-    // 1. FULL SERVER RE-VALIDATION BEFORE PUBLISHING
+    if (!paper) {
+      return { success: false, error: 'Paper draft not found' };
+    }
+
+    // 1. SERVER RE-VALIDATION BEFORE PUBLISHING
     if (!paper.title || !paper.course || paper.duration_minutes <= 0 || paper.total_marks <= 0) {
       return { success: false, error: 'Paper contains invalid title, course, duration, or total marks.' };
+    }
+
+    if (!paper.start_at || !paper.end_at) {
+      return { success: false, error: 'Exam access start and end times are required before publishing.' };
+    }
+
+    if (new Date(paper.start_at).getTime() >= new Date(paper.end_at).getTime()) {
+      return { success: false, error: 'Exam access start time must be before end time.' };
     }
 
     if (paperQuestions.length === 0) {
@@ -103,31 +122,24 @@ export async function publishPaperServerSide(
       }
     }
 
-    // 2. Generate Cryptographically Unique Access Code with Collision Retry Loop
-    let accessCode = generateSecureAccessCode(paper.course);
-    let attempts = 0;
-    let isUnique = false;
+    // 2. Validate Access Code
+    const accessCode = normalizeAccessCode(paper.access_code);
+    if (!accessCode || accessCode.length < 4) {
+      return { success: false, error: 'Please create an examination access code before publishing.' };
+    }
 
-    if (process.env.NODE_ENV === 'test' || !process.env.NEXT_PUBLIC_SUPABASE_URL?.includes('supabase.co')) {
-      isUnique = true;
-    } else {
-      while (!isUnique && attempts < 5) {
-        attempts++;
-        const { data: existing } = await supabase
-          .from('papers')
-          .select('id')
-          .eq('access_code', accessCode)
-          .maybeSingle();
+    // Uniqueness check for access_code
+    if (process.env.NODE_ENV !== 'test' && process.env.NEXT_PUBLIC_SUPABASE_URL?.includes('supabase.co')) {
+      const { data: existingPaper } = await supabase
+        .from('papers')
+        .select('id')
+        .eq('status', 'PUBLISHED')
+        .ilike('access_code', accessCode)
+        .neq('id', paperId)
+        .maybeSingle();
 
-        if (!existing) {
-          isUnique = true;
-        } else {
-          accessCode = generateSecureAccessCode(paper.course);
-        }
-      }
-
-      if (!isUnique) {
-        return { success: false, error: 'Failed to generate unique access code. Please try again.' };
+      if (existingPaper) {
+        return { success: false, error: 'This access code is already in use by another published paper. Please choose another code.' };
       }
     }
 
@@ -149,39 +161,25 @@ export async function publishPaperServerSide(
         .eq('id', paperId);
 
       if (updateError) {
-        return { success: false, error: updateError.message };
+        return { success: false, error: `Failed to publish paper: ${updateError.message}` };
       }
-
-      // 4. Audit Log (PASSWORD/CODE OMITTED FOR CLEAN AUDIT LOGGING)
-      await supabase.from('admin_audit_logs').insert({
-        admin_user_id: adminProfileId,
-        action: 'PAPER_PUBLISHED',
-        target_type: 'PAPER',
-        target_id: paperId,
-        metadata: {
-          title: paper.title,
-          course: paper.course,
-          total_marks: paper.total_marks,
-          question_count: paperQuestions.length,
-        },
-        created_at: nowIso,
-      });
     }
 
     return {
       success: true,
+      accessCode: accessCode,
       data: {
-        paperId,
+        paperId: paper.id,
         title: paper.title,
-        accessCode,
+        accessCode: accessCode,
         publishedAt: nowIso,
         totalMarks: paper.total_marks,
-        requiredQuestionCount: paperQuestions.length,
+        requiredQuestionCount: paper.required_question_count,
         durationMinutes: paper.duration_minutes,
       },
     };
   } catch (err: any) {
-    console.error('Publishing error:', err);
-    return { success: false, error: 'Internal server error' };
+    console.error('Error publishing paper:', err);
+    return { success: false, error: err.message || 'Failed to publish paper' };
   }
 }

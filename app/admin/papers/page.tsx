@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { Paper } from '@/types/database';
 import { MagneticButton } from '@/components/ui/MagneticButton';
-import { Plus, Edit3, Award, Clock, FileText, CheckCircle2, Copy, Send, AlertTriangle, X, Trash2 } from 'lucide-react';
+import { Plus, Edit3, Award, Clock, FileText, CheckCircle2, Copy, Send, AlertTriangle, X, Trash2, Download } from 'lucide-react';
 import Link from 'next/link';
 
 export default function AdminPapersPage() {
@@ -245,6 +245,16 @@ export default function AdminPapersPage() {
                     </button>
                   </div>
 
+                  {paper.status === 'PUBLISHED' && (
+                    <a
+                      href={`/api/admin/papers/${paper.id}/export-csv`}
+                      download
+                      className="w-full py-2 px-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-display font-bold text-xs uppercase tracking-wider border-2 border-brand-black shadow-editorial flex items-center justify-center gap-1 cursor-pointer transition-colors"
+                    >
+                      <Download className="w-4 h-4" /> Download Results CSV
+                    </a>
+                  )}
+
                   {paper.status === 'DRAFT' && (
                     <button
                       onClick={() => handleOpenPublishModal(paper)}
@@ -297,6 +307,26 @@ export default function AdminPapersPage() {
                     <div className="flex justify-between">
                       <span className="text-slate-600">Duration:</span>
                       <span className="font-bold text-brand-black">{publishingPaper.duration_minutes} Mins</span>
+                    </div>
+                    <div className="flex justify-between pt-1 border-t border-slate-300">
+                      <span className="text-slate-600">Student Result:</span>
+                      <span className={`font-bold ${publishingPaper.show_result_to_student ? 'text-emerald-700' : 'text-slate-700'}`}>
+                        {publishingPaper.show_result_to_student ? 'Visible' : 'Hidden'}
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-slate-600">Access Window:</span>
+                      <span className="font-bold text-brand-black">
+                        {publishingPaper.start_at && publishingPaper.end_at
+                          ? `${new Date(publishingPaper.start_at).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })} to ${new Date(publishingPaper.end_at).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}`
+                          : 'No Access Window'}
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-slate-600">Question Shuffle:</span>
+                      <span className={`font-bold ${publishingPaper.shuffle_questions !== false ? 'text-burnt-orange' : 'text-slate-700'}`}>
+                        {publishingPaper.shuffle_questions !== false ? 'Enabled' : 'Disabled'}
+                      </span>
                     </div>
                   </div>
 

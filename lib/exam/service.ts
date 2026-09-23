@@ -33,6 +33,7 @@ export const mockExamStore = {
   answers: new Map<string, Answer>(), // key: ${attemptId}:${questionId}
   questions: new Map<string, any>(),
   paperQuestions: new Map<string, string[]>(), // paperId -> questionIds[]
+  papers: new Map<string, any>(),
 };
 
 export async function saveExamAnswer(
@@ -90,9 +91,9 @@ export async function saveExamAnswer(
     } else {
       const { data: pq } = await supabase
         .from('paper_questions')
-        .select('id')
+        .select('id, question_id')
         .eq('paper_id', attempt.paper_id)
-        .eq('question_id', questionId)
+        .or(`id.eq.${questionId},question_id.eq.${questionId}`)
         .maybeSingle();
       isQuestionInPaper = !!pq;
     }
@@ -254,12 +255,25 @@ export async function getExamState(
       if (attempt) {
         const { data: pqData } = await supabase
           .from('paper_questions')
-          .select('question_id, question_order, questions(*)')
+          .select('*, questions(*)')
           .eq('paper_id', attempt.paper_id)
           .order('question_order', { ascending: true });
 
         if (pqData) {
-          rawQuestions = pqData.map((pq: any) => pq.questions).filter(Boolean);
+          rawQuestions = pqData.map((pq: any) => ({
+            id: pq.id || pq.question_id,
+            question_text: pq.question_text || pq.questions?.question_text,
+            question_type: pq.question_type || pq.questions?.question_type || 'MCQ_SINGLE',
+            difficulty: pq.difficulty || pq.questions?.difficulty || 'MEDIUM',
+            option_a: pq.option_a || pq.questions?.option_a,
+            option_b: pq.option_b || pq.questions?.option_b,
+            option_c: pq.option_c || pq.questions?.option_c,
+            option_d: pq.option_d || pq.questions?.option_d,
+            correct_option: pq.correct_option || pq.questions?.correct_option,
+            explanation: pq.explanation || pq.questions?.explanation,
+            code_snippet: pq.code_snippet || pq.questions?.code_snippet,
+            marks: pq.marks || pq.questions?.marks || 1,
+          })).filter((q: any) => q.question_text);
         }
 
         const { data: ansData } = await supabase
@@ -272,6 +286,22 @@ export async function getExamState(
 
     if (!attempt) return { success: false, error: 'Attempt not found' };
     if (attempt.user_id !== userId) return { success: false, error: 'Unauthorized attempt access' };
+
+    // Apply persisted attempt question_order if present (NEVER RESHUFFLE ON REFRESH/REOPEN)
+    if (attempt.question_order && Array.isArray(attempt.question_order) && attempt.question_order.length > 0) {
+      const qMap = new Map<string, any>();
+      rawQuestions.forEach((q) => qMap.set(q.id, q));
+      const ordered: any[] = [];
+      attempt.question_order.forEach((qId) => {
+        if (qMap.has(qId)) {
+          ordered.push(qMap.get(qId));
+        }
+      });
+      rawQuestions.forEach((q) => {
+        if (!ordered.includes(q)) ordered.push(q);
+      });
+      rawQuestions = ordered;
+    }
 
     // SANITIZE QUESTIONS: EXPLICITLY STRIP correct_option AND explanation
     const sanitizedQuestions: ClientQuestion[] = rawQuestions.map((q) => {

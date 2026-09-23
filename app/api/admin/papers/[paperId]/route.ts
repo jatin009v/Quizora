@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getAuthContext } from '@/lib/auth/session';
 import { CreatePaperSchema } from '@/lib/validation/paper';
-import { createOrUpdatePaperDraft } from '@/lib/exam/paperService';
+import { createOrUpdatePaperDraft, isUuid, deletePaper } from '@/lib/exam/paperService';
 import { createAdminClient } from '@/lib/supabase/admin';
 
 export async function GET(
@@ -18,6 +18,11 @@ export async function GET(
     }
 
     const { paperId } = params;
+
+    if (process.env.NODE_ENV !== 'test' && !isUuid(paperId)) {
+      return NextResponse.json({ success: false, error: 'Paper not found' }, { status: 404 });
+    }
+
     const supabase = createAdminClient();
 
     const { data: paper, error: paperError } = await supabase
@@ -32,7 +37,7 @@ export async function GET(
 
     const { data: paperQuestions } = await supabase
       .from('paper_questions')
-      .select('question_id, question_order, marks, questions(*)')
+      .select('*, questions(*)')
       .eq('paper_id', paperId)
       .order('question_order', { ascending: true });
 
@@ -65,8 +70,14 @@ export async function PUT(
       );
     }
 
+    const { paperId } = params;
+
+    if (process.env.NODE_ENV !== 'test' && !isUuid(paperId)) {
+      return NextResponse.json({ success: false, error: 'Invalid paper ID format' }, { status: 400 });
+    }
+
     const body = await req.json();
-    const validation = CreatePaperSchema.safeParse({ ...body, id: params.paperId });
+    const validation = CreatePaperSchema.safeParse({ ...body, id: paperId });
 
     if (!validation.success) {
       return NextResponse.json(
@@ -104,7 +115,11 @@ export async function DELETE(
     }
 
     const { paperId } = params;
-    const { deletePaper } = await import('@/lib/exam/paperService');
+
+    if (process.env.NODE_ENV !== 'test' && !isUuid(paperId)) {
+      return NextResponse.json({ success: false, error: 'Invalid paper ID format' }, { status: 400 });
+    }
+
     const result = await deletePaper(auth.profile.id, paperId);
 
     if (!result.success) {

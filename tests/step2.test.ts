@@ -97,7 +97,7 @@ describe('Quizora DCA Quiz Platform — Step 2 Verification Suite', () => {
     expect(perQuestionMark).toBe(2);
   });
 
-  it('4. Selected question count is validated against required question count', async () => {
+  it('4. Selected question count is validated against required question count when publishing', async () => {
     const paper = await createOrUpdatePaperDraft(adminId, {
       title: 'Invalid Count Quiz',
       course: 'DCA',
@@ -105,7 +105,7 @@ describe('Quizora DCA Quiz Platform — Step 2 Verification Suite', () => {
       requiredQuestionCount: 50,
       totalMarks: 50,
       markingMode: 'EQUAL_MARKS',
-      status: 'DRAFT',
+      status: 'PUBLISHED',
       selectedQuestions: [{ questionId: q1Id, questionOrder: 1 }], // Only 1 selected when 50 required!
     });
 

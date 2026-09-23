@@ -52,8 +52,21 @@ export async function validateAccessCodeServerSide(
     let paper: Paper | null = null;
 
     if (process.env.NODE_ENV === 'test' || !process.env.NEXT_PUBLIC_SUPABASE_URL?.includes('supabase.co')) {
-      // Test mock lookup
-      if (normalizedCode === 'DCA-7K4P9X' || normalizedCode === 'DCA-VALID') {
+      // 1. Dynamic search in mockExamStore for published paper with matching access_code
+      for (const p of mockExamStore.papers.values()) {
+        if (
+          p.status === 'PUBLISHED' &&
+          p.access_code &&
+          (normalizeAccessCode(p.access_code) === normalizedCode ||
+            normalizeAccessCode(p.access_code).replace(/-/g, '') === normalizedCode.replace(/-/g, ''))
+        ) {
+          paper = p;
+          break;
+        }
+      }
+
+      // 2. Fallback for hardcoded test paper
+      if (!paper && (normalizedCode === 'DCA-7K4P9X' || normalizedCode === 'DCA7K4P9X' || normalizedCode === 'DCA-VALID')) {
         paper = {
           id: 'paper-step4-001',
           title: 'DCA Computer Fundamentals Examination',
@@ -67,6 +80,8 @@ export async function validateAccessCodeServerSide(
           access_code: 'DCA-7K4P9X',
           start_at: null,
           end_at: null,
+          show_result_to_student: false,
+          shuffle_questions: true,
           created_by: 'usr-admin-001',
           published_at: new Date().toISOString(),
           created_at: new Date().toISOString(),
@@ -91,10 +106,18 @@ export async function validateAccessCodeServerSide(
 
     // Schedule check using SERVER TIME
     if (paper.start_at && new Date(paper.start_at).getTime() > nowMs) {
-      return { success: false, error: 'Exam has not started yet.', code: 'EXAM_NOT_STARTED' };
+      return {
+        success: false,
+        error: 'Exam access has not started yet. Please contact your administrator.',
+        code: 'EXAM_NOT_STARTED',
+      };
     }
-    if (paper.end_at && new Date(paper.end_at).getTime() < nowMs) {
-      return { success: false, error: 'Exam is no longer available.', code: 'EXAM_ENDED' };
+    if (paper.end_at && new Date(paper.end_at).getTime() <= nowMs) {
+      return {
+        success: false,
+        error: 'Exam access has closed. Please contact your administrator.',
+        code: 'EXAM_ENDED',
+      };
     }
 
     // Check existing student attempt
@@ -177,6 +200,8 @@ export async function createOrRecoverExamAttempt(
         access_code: 'DCA-7K4P9X',
         start_at: null,
         end_at: null,
+        show_result_to_student: false,
+        shuffle_questions: true,
         created_by: 'usr-admin-001',
         published_at: nowIso,
         created_at: nowIso,
@@ -207,7 +232,7 @@ export async function createOrRecoverExamAttempt(
       return { success: false, error: 'Exam paper not found', code: 'PAPER_NOT_FOUND' };
     }
 
-    // Recover existing IN_PROGRESS attempt
+    // Recover existing IN_PROGRESS attempt (DO NOT RESHUFFLE OR TERMINATE)
     if (existingAttempt) {
       if (existingAttempt.status === 'SUBMITTED') {
         return { success: false, error: 'Exam already submitted', code: 'ATTEMPT_SUBMITTED' };
@@ -229,6 +254,47 @@ export async function createOrRecoverExamAttempt(
       };
     }
 
+    // Validate access window before creating NEW attempt
+    if (paper.start_at && new Date(paper.start_at).getTime() > nowMs) {
+      return {
+        success: false,
+        error: 'Exam access has not started yet. Please contact your administrator.',
+        code: 'EXAM_NOT_STARTED',
+      };
+    }
+    if (paper.end_at && new Date(paper.end_at).getTime() <= nowMs) {
+      return {
+        success: false,
+        error: 'Exam access has closed. Please contact your administrator.',
+        code: 'EXAM_ENDED',
+      };
+    }
+
+    // SERVER-AUTHORITATIVE QUESTION SHUFFLING
+    let questionOrderToSave: string[] = [];
+    if (process.env.NODE_ENV === 'test' || !process.env.NEXT_PUBLIC_SUPABASE_URL?.includes('supabase.co')) {
+      questionOrderToSave = [...(mockExamStore.paperQuestions.get(paperId) || [])];
+    } else {
+      const { data: pqList } = await supabase
+        .from('paper_questions')
+        .select('question_id, question_order')
+        .eq('paper_id', paperId)
+        .order('question_order', { ascending: true });
+      if (pqList) {
+        questionOrderToSave = pqList.map((pq: any) => pq.question_id);
+      }
+    }
+
+    // Perform Fisher-Yates shuffle if shuffle_questions is enabled
+    if (paper.shuffle_questions !== false && questionOrderToSave.length > 0) {
+      for (let i = questionOrderToSave.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        const temp = questionOrderToSave[i];
+        questionOrderToSave[i] = questionOrderToSave[j];
+        questionOrderToSave[j] = temp;
+      }
+    }
+
     // SERVER-AUTHORITATIVE TIMER STAMPING
     const startedAt = nowIso;
     const expiresAt = new Date(nowMs + paper.duration_minutes * 60 * 1000).toISOString();
@@ -248,6 +314,7 @@ export async function createOrRecoverExamAttempt(
       tab_switch_count: 0,
       fullscreen_exit_count: 0,
       last_question_index: 0,
+      question_order: questionOrderToSave,
       created_at: startedAt,
       updated_at: startedAt,
     };

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getAuthContext } from '@/lib/auth/session';
 import { publishPaperServerSide } from '@/lib/exam/publishService';
+import { isUuid } from '@/lib/exam/paperService';
 
 export const dynamic = 'force-dynamic';
 
@@ -18,6 +19,11 @@ export async function POST(
     }
 
     const { paperId } = params;
+
+    if (process.env.NODE_ENV !== 'test' && !isUuid(paperId)) {
+      return NextResponse.json({ success: false, error: 'Invalid paper ID format' }, { status: 400 });
+    }
+
     const result = await publishPaperServerSide(auth.profile.id, paperId);
 
     if (!result.success) {

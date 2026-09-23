@@ -67,6 +67,8 @@ export interface Paper {
   access_code: string | null;
   start_at: string | null;
   end_at: string | null;
+  show_result_to_student: boolean;
+  shuffle_questions: boolean;
   created_by: string;
   published_at: string | null;
   created_at: string;
@@ -96,6 +98,7 @@ export interface ExamAttempt {
   tab_switch_count: number;
   fullscreen_exit_count: number;
   last_question_index: number;
+  question_order?: string[] | null;
   created_at: string;
   updated_at: string;
 }
