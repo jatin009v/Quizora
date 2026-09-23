@@ -4,6 +4,7 @@ import { createOrUpdatePaperDraft, isUuid } from '../lib/exam/paperService';
 import { publishPaperServerSide } from '../lib/exam/publishService';
 import { validateAccessCodeServerSide, createOrRecoverExamAttempt } from '../lib/exam/attemptService';
 import { getExamState, mockExamStore } from '../lib/exam/service';
+import { formatForDateTimeInput } from '../components/admin/PaperBuilderForm';
 
 describe('Quizora Step 12 — Paper-Centric Architecture & Access Code Control Suite', () => {
   const adminId = 'usr-admin-step12';
@@ -647,6 +648,136 @@ describe('Quizora Step 12 — Paper-Centric Architecture & Access Code Control S
       // Access code and correct_option MUST NOT be leaked to student
       expect((state.data as any).access_code).toBeUndefined();
       expect((state.data?.questions[0] as any).correct_option).toBeUndefined();
+    });
+  });
+
+  describe('5. Bug 1 & Bug 2 Critical Production Regression Tests', () => {
+    it('creates exam attempt with a valid UUID and recovers existing attempt on repeat access', async () => {
+      const paperId = '00000000-0000-0000-0000-000000000099';
+      mockExamStore.papers.set(paperId, {
+        id: paperId,
+        title: 'UUID Test Exam',
+        access_code: 'UUID-TEST1',
+        status: 'PUBLISHED',
+        duration_minutes: 30,
+        total_marks: 10,
+        required_question_count: 1,
+        marking_mode: 'EQUAL_MARKS',
+        show_result_to_student: false,
+        shuffle_questions: true,
+        created_by: adminId,
+        published_at: new Date().toISOString(),
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      });
+      mockExamStore.paperQuestions.set(paperId, ['q-u1']);
+
+      // 1. Initial creation
+      const res1 = await createOrRecoverExamAttempt(studentId, paperId);
+      expect(res1.success).toBe(true);
+      expect(res1.data?.attemptId).toBeDefined();
+      expect(isUuid(res1.data!.attemptId)).toBe(true);
+
+      // 2. Repeat access recovers existing attempt
+      const res2 = await createOrRecoverExamAttempt(studentId, paperId);
+      expect(res2.success).toBe(true);
+      expect(res2.data?.attemptId).toBe(res1.data!.attemptId);
+    });
+
+    it('preserves exact schedule timestamps across Save Draft, Publish, title change, and page reloads (Bug 2 timezone invariance)', async () => {
+      const startLocal = '2026-09-23T12:30';
+      const endLocal = '2026-09-28T02:00';
+
+      const startIso = new Date(startLocal).toISOString();
+      const endIso = new Date(endLocal).toISOString();
+
+      // 1. Create draft with schedule
+      const createRes = await createOrUpdatePaperDraft(adminId, {
+        title: 'Schedule Persistence Test Paper',
+        course: 'DCA',
+        durationMinutes: 60,
+        requiredQuestionCount: 1,
+        totalMarks: 5,
+        accessCode: 'SCHED-PASS',
+        startAt: startIso,
+        endAt: endIso,
+        status: 'DRAFT',
+      });
+      expect(createRes.success).toBe(true);
+      const paperId = createRes.paperId!;
+
+      const storedPaper1 = mockExamStore.papers.get(paperId)!;
+      expect(storedPaper1.start_at).toBe(startIso);
+      expect(storedPaper1.end_at).toBe(endIso);
+
+      // 2. Simulate edit page reload formatting
+      const formattedStart = formatForDateTimeInput(storedPaper1.start_at);
+      const formattedEnd = formatForDateTimeInput(storedPaper1.end_at);
+      expect(formattedStart).toBe(startLocal);
+      expect(formattedEnd).toBe(endLocal);
+
+      // 3. Save draft again without changing schedule
+      const saveRes = await createOrUpdatePaperDraft(adminId, {
+        id: paperId,
+        title: 'Schedule Persistence Test Paper',
+        course: 'DCA',
+        durationMinutes: 60,
+        requiredQuestionCount: 1,
+        totalMarks: 5,
+        accessCode: 'SCHED-PASS',
+        startAt: new Date(formattedStart).toISOString(),
+        endAt: new Date(formattedEnd).toISOString(),
+        status: 'DRAFT',
+      });
+      expect(saveRes.success).toBe(true);
+
+      const storedPaper2 = mockExamStore.papers.get(paperId)!;
+      expect(storedPaper2.start_at).toBe(startIso);
+      expect(storedPaper2.end_at).toBe(endIso);
+
+      // 4. Change title only and save
+      const titleRes = await createOrUpdatePaperDraft(adminId, {
+        id: paperId,
+        title: 'New Paper Title Only',
+        course: 'DCA',
+        durationMinutes: 60,
+        requiredQuestionCount: 1,
+        totalMarks: 5,
+        accessCode: 'SCHED-PASS',
+        startAt: new Date(formattedStart).toISOString(),
+        endAt: new Date(formattedEnd).toISOString(),
+        status: 'DRAFT',
+      });
+      expect(titleRes.success).toBe(true);
+
+      const storedPaper3 = mockExamStore.papers.get(paperId)!;
+      expect(storedPaper3.start_at).toBe(startIso);
+      expect(storedPaper3.end_at).toBe(endIso);
+
+      // 5. Publish paper
+      mockExamStore.questions.set('q-sched-1', {
+        id: 'q-sched-1',
+        paper_id: paperId,
+        question_text: 'Sched Q',
+        question_type: 'MCQ_SINGLE',
+        difficulty: 'EASY',
+        option_a: 'A',
+        option_b: 'B',
+        option_c: 'C',
+        option_d: 'D',
+        correct_option: 'A',
+        marks: 5,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      });
+      mockExamStore.paperQuestions.set(paperId, ['q-sched-1']);
+
+      const pubRes = await publishPaperServerSide(adminId, paperId);
+      expect(pubRes.success).toBe(true);
+
+      const storedPaper4 = mockExamStore.papers.get(paperId)!;
+      expect(storedPaper4.start_at).toBe(startIso);
+      expect(storedPaper4.end_at).toBe(endIso);
     });
   });
 });

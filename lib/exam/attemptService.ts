@@ -277,11 +277,11 @@ export async function createOrRecoverExamAttempt(
     } else {
       const { data: pqList } = await supabase
         .from('paper_questions')
-        .select('question_id, question_order')
+        .select('id, question_id, question_order')
         .eq('paper_id', paperId)
         .order('question_order', { ascending: true });
       if (pqList) {
-        questionOrderToSave = pqList.map((pq: any) => pq.question_id);
+        questionOrderToSave = pqList.map((pq: any) => pq.id || pq.question_id);
       }
     }
 
@@ -295,10 +295,10 @@ export async function createOrRecoverExamAttempt(
       }
     }
 
-    // SERVER-AUTHORITATIVE TIMER STAMPING
+    // SERVER-AUTHORITATIVE TIMER STAMPING & UUID GENERATION
     const startedAt = nowIso;
     const expiresAt = new Date(nowMs + paper.duration_minutes * 60 * 1000).toISOString();
-    const attemptId = `att-${nowMs}-${Math.random().toString(36).substring(2, 7)}`;
+    const attemptId = crypto.randomUUID();
 
     const newAttempt: ExamAttempt = {
       id: attemptId,
@@ -329,7 +329,19 @@ export async function createOrRecoverExamAttempt(
         .single();
 
       if (insertError || !insertedData) {
-        return { success: false, error: 'Failed to create exam attempt record' };
+        console.error('[EXAM_ATTEMPT_INSERT_ERROR]', {
+          paper_id: paperId,
+          user_id: userId,
+          attempt_id: attemptId,
+          code: insertError?.code,
+          message: insertError?.message,
+          details: insertError?.details,
+          hint: insertError?.hint,
+        });
+        return {
+          success: false,
+          error: insertError?.message || 'Unable to start this exam. Please contact the exam administrator.',
+        };
       }
     }
 

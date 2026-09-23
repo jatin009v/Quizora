@@ -8,6 +8,19 @@ import { generateSecureAccessCode, normalizeAccessCode } from '@/lib/exam/access
 import { CheckCircle2, AlertCircle, Save, Send, Key, Plus, Trash2, Edit3, X, RefreshCw, AlertTriangle } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 
+export function formatForDateTimeInput(isoString: string | null | undefined): string {
+  if (!isoString) return '';
+  const d = new Date(isoString);
+  if (isNaN(d.getTime())) return '';
+  const pad = (n: number) => n.toString().padStart(2, '0');
+  const year = d.getFullYear();
+  const month = pad(d.getMonth() + 1);
+  const day = pad(d.getDate());
+  const hours = pad(d.getHours());
+  const minutes = pad(d.getMinutes());
+  return `${year}-${month}-${day}T${hours}:${minutes}`;
+}
+
 interface PaperBuilderFormProps {
   initialData?: any;
   paperId?: string;
@@ -44,10 +57,10 @@ export function PaperBuilderForm({
     initialData?.shuffle_questions ?? true
   );
   const [startAt, setStartAt] = useState<string>(
-    initialData?.start_at ? new Date(initialData.start_at).toISOString().slice(0, 16) : ''
+    formatForDateTimeInput(initialData?.start_at)
   );
   const [endAt, setEndAt] = useState<string>(
-    initialData?.end_at ? new Date(initialData.end_at).toISOString().slice(0, 16) : ''
+    formatForDateTimeInput(initialData?.end_at)
   );
 
   // Access Code State
@@ -77,8 +90,16 @@ export function PaperBuilderForm({
   }, [course]);
 
   useEffect(() => {
-    if (initialData?.paperQuestions) {
-      setPaperQuestions(initialData.paperQuestions);
+    if (initialData) {
+      if (initialData.paperQuestions) {
+        setPaperQuestions(initialData.paperQuestions);
+      }
+      if (initialData.start_at !== undefined) {
+        setStartAt(formatForDateTimeInput(initialData.start_at));
+      }
+      if (initialData.end_at !== undefined) {
+        setEndAt(formatForDateTimeInput(initialData.end_at));
+      }
     }
   }, [initialData]);
 
