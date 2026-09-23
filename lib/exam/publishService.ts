@@ -114,11 +114,20 @@ export async function publishPaperServerSide(
       };
     }
 
-    // Validate every question has text, options, and correct_option
+    // Validate every paper_question has text, options, and correct_option (supporting paper-centric snapshots & legacy links)
     for (const pq of paperQuestions) {
-      const q = pq.questions;
-      if (!q || !q.question_text || !q.option_a || !q.option_b || !q.option_c || !q.option_d || !q.correct_option) {
-        return { success: false, error: 'One or more questions in this paper contain incomplete text or options.' };
+      const questionText = (pq.question_text || pq.questions?.question_text || '').trim();
+      const optionA = (pq.option_a || pq.questions?.option_a || '').trim();
+      const optionB = (pq.option_b || pq.questions?.option_b || '').trim();
+      const optionC = (pq.option_c || pq.questions?.option_c || '').trim();
+      const optionD = (pq.option_d || pq.questions?.option_d || '').trim();
+      const correctOpt = (pq.correct_option || pq.questions?.correct_option || '').toUpperCase().trim();
+
+      if (!questionText || !optionA || !optionB || !optionC || !optionD || !['A', 'B', 'C', 'D'].includes(correctOpt)) {
+        return {
+          success: false,
+          error: `One or more questions in this paper contain incomplete text or options (Question #${pq.question_order || 1}).`,
+        };
       }
     }
 

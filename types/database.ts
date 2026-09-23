@@ -78,8 +78,19 @@ export interface Paper {
 export interface PaperQuestion {
   id: string;
   paper_id: string;
-  question_id: string;
+  question_id?: string | null;
   question_order: number;
+  question_text?: string;
+  question_type?: QuestionType;
+  difficulty?: DifficultyLevel;
+  option_a?: string;
+  option_b?: string;
+  option_c?: string;
+  option_d?: string;
+  correct_option?: string;
+  explanation?: string | null;
+  code_snippet?: string | null;
+  image_url?: string | null;
   marks: number;
   created_at: string;
 }

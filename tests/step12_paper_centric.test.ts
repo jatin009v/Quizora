@@ -346,6 +346,95 @@ describe('Quizora Step 12 — Paper-Centric Architecture & Access Code Control S
       expect(mockExamStore.paperQuestions.get(paperAId)).toHaveLength(4);
       expect(mockExamStore.paperQuestions.get(paperBId)).toHaveLength(5);
     });
+
+    it('rigorously validates question fields during publish (missing options, whitespace, optional fields, 4/4 scenario)', async () => {
+      const now = new Date();
+      const startAt = new Date(now.getTime() - 600000).toISOString();
+      const endAt = new Date(now.getTime() + 3600000).toISOString();
+
+      const draftRes = await createOrUpdatePaperDraft(adminId, {
+        title: 'Rigorous Question Field Test',
+        course: 'DCA',
+        durationMinutes: 60,
+        requiredQuestionCount: 4,
+        totalMarks: 20,
+        accessCode: 'FIELDTEST1',
+        startAt,
+        endAt,
+        status: 'DRAFT',
+      });
+      const paperId = draftRes.paperId!;
+
+      const buildQ = (id: string, text: string, a: string, b: string, c: string, d: string, corr: string, extra = {}) => ({
+        id,
+        paper_id: paperId,
+        question_text: text,
+        question_type: 'MCQ_SINGLE',
+        difficulty: 'MEDIUM',
+        option_a: a,
+        option_b: b,
+        option_c: c,
+        option_d: d,
+        correct_option: corr,
+        marks: 5,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+        ...extra,
+      });
+
+      // 1. Missing question_text fails
+      mockExamStore.papers.get(paperId)!.required_question_count = 1;
+      mockExamStore.paperQuestions.set(paperId, ['q-f1']);
+      mockExamStore.questions.set('q-f1', buildQ('q-f1', '', 'A', 'B', 'C', 'D', 'A'));
+      let pub = await publishPaperServerSide(adminId, paperId);
+      expect(pub.success).toBe(false);
+      expect(pub.error).toContain('incomplete text or options');
+
+      // 2. Missing option_a fails
+      mockExamStore.questions.set('q-f1', buildQ('q-f1', 'Valid Text', '', 'B', 'C', 'D', 'A'));
+      pub = await publishPaperServerSide(adminId, paperId);
+      expect(pub.success).toBe(false);
+
+      // 3. Missing option_b fails
+      mockExamStore.questions.set('q-f1', buildQ('q-f1', 'Valid Text', 'A', '', 'C', 'D', 'A'));
+      pub = await publishPaperServerSide(adminId, paperId);
+      expect(pub.success).toBe(false);
+
+      // 4. Missing option_c fails
+      mockExamStore.questions.set('q-f1', buildQ('q-f1', 'Valid Text', 'A', 'B', '', 'D', 'A'));
+      pub = await publishPaperServerSide(adminId, paperId);
+      expect(pub.success).toBe(false);
+
+      // 5. Missing option_d fails
+      mockExamStore.questions.set('q-f1', buildQ('q-f1', 'Valid Text', 'A', 'B', 'C', '', 'A'));
+      pub = await publishPaperServerSide(adminId, paperId);
+      expect(pub.success).toBe(false);
+
+      // 6. Whitespace-only option fails
+      mockExamStore.questions.set('q-f1', buildQ('q-f1', 'Valid Text', 'A', '   ', 'C', 'D', 'A'));
+      pub = await publishPaperServerSide(adminId, paperId);
+      expect(pub.success).toBe(false);
+
+      // 7. Missing explanation and missing image_url do NOT fail
+      // Setup 4 complete questions with optional fields omitted
+      mockExamStore.papers.get(paperId)!.required_question_count = 4;
+      const q4Ids = ['q1', 'q2', 'q3', 'q4'];
+      mockExamStore.paperQuestions.set(paperId, q4Ids);
+      q4Ids.forEach((id) => {
+        mockExamStore.questions.set(id, buildQ(id, `Question ${id}`, 'Opt A', 'Opt B', 'Opt C', 'Opt D', 'A', { explanation: null, image_url: null }));
+      });
+
+      // 8. 4 complete questions with required_count = 4 can publish!
+      pub = await publishPaperServerSide(adminId, paperId);
+      expect(pub.success).toBe(true);
+
+      // 9. One incomplete question among 4 prevents publishing
+      mockExamStore.questions.set('q4', buildQ('q4', 'Question q4', 'Opt A', 'Opt B', 'Opt C', '  ', 'A'));
+      mockExamStore.papers.get(paperId)!.status = 'DRAFT'; // Reset status to test draft publish
+      pub = await publishPaperServerSide(adminId, paperId);
+      expect(pub.success).toBe(false);
+      expect(pub.error).toContain('Question #4');
+    });
   });
 
   describe('3. Student Access Code & Access Schedule Window Validation', () => {
