@@ -157,6 +157,195 @@ describe('Quizora Step 12 — Paper-Centric Architecture & Access Code Control S
       expect(paper2Res.success).toBe(false);
       expect(paper2Res.error).toContain('already in use');
     });
+
+    it('saves draft with 0, partial, or all questions without clearing paper_questions', async () => {
+      // 1. Save draft with 0 questions & incomplete metadata
+      const draft0 = await createOrUpdatePaperDraft(adminId, {
+        title: 'Draft 0 Questions',
+        course: '',
+        durationMinutes: 0,
+        requiredQuestionCount: 5,
+        totalMarks: 0,
+        status: 'DRAFT',
+      });
+      expect(draft0.success).toBe(true);
+      const paperId = draft0.paperId!;
+
+      // 2. Attach 5 questions to paperQuestions store
+      const qIds = ['q1', 'q2', 'q3', 'q4', 'q5'];
+      mockExamStore.paperQuestions.set(paperId, qIds);
+      qIds.forEach((id) => {
+        mockExamStore.questions.set(id, {
+          id,
+          paper_id: paperId,
+          question_text: `Question ${id}`,
+          question_type: 'MCQ_SINGLE',
+          difficulty: 'MEDIUM',
+          option_a: 'A',
+          option_b: 'B',
+          option_c: 'C',
+          option_d: 'D',
+          correct_option: 'A',
+          marks: 1,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        });
+      });
+
+      // 3. Save draft metadata again (without selectedQuestions payload)
+      const draftUpdate = await createOrUpdatePaperDraft(adminId, {
+        id: paperId,
+        title: 'Updated Draft Title',
+        course: 'DCA',
+        durationMinutes: 60,
+        requiredQuestionCount: 5,
+        totalMarks: 5,
+        status: 'DRAFT',
+      });
+      expect(draftUpdate.success).toBe(true);
+
+      // Verify paperQuestions were NOT cleared
+      expect(mockExamStore.paperQuestions.get(paperId)).toHaveLength(5);
+    });
+
+    it('publishes paper based on authoritative paper_questions count in DB/Store, ignoring client selectedQuestions', async () => {
+      const now = new Date();
+      const startAt = new Date(now.getTime() - 600000).toISOString();
+      const endAt = new Date(now.getTime() + 3600000).toISOString();
+      const accessCode = 'AUTH-CODE55';
+
+      // Create draft paper requiring 5 questions
+      const draftRes = await createOrUpdatePaperDraft(adminId, {
+        title: 'Authoritative Publish Test',
+        course: 'DCA',
+        durationMinutes: 30,
+        requiredQuestionCount: 5,
+        totalMarks: 25,
+        accessCode,
+        startAt,
+        endAt,
+        status: 'DRAFT',
+      });
+      const paperId = draftRes.paperId!;
+
+      // Case A: 0 questions attached -> Reject publish
+      const pub0 = await publishPaperServerSide(adminId, paperId);
+      expect(pub0.success).toBe(false);
+      expect(pub0.error).toBeDefined();
+
+      // Case B: 4 questions attached (4 / 5) -> Reject publish
+      const qIds4 = ['q-a1', 'q-a2', 'q-a3', 'q-a4'];
+      mockExamStore.paperQuestions.set(paperId, qIds4);
+      qIds4.forEach((id) => {
+        mockExamStore.questions.set(id, {
+          id,
+          paper_id: paperId,
+          question_text: `Q ${id}`,
+          question_type: 'MCQ_SINGLE',
+          difficulty: 'EASY',
+          option_a: 'A',
+          option_b: 'B',
+          option_c: 'C',
+          option_d: 'D',
+          correct_option: 'A',
+          marks: 5,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        });
+      });
+
+      const pub4 = await publishPaperServerSide(adminId, paperId);
+      expect(pub4.success).toBe(false);
+      expect(pub4.error).toContain('4');
+
+      // Case C: Add 5th question (5 / 5) -> Publish succeeds!
+      const qIds5 = [...qIds4, 'q-a5'];
+      mockExamStore.paperQuestions.set(paperId, qIds5);
+      mockExamStore.questions.set('q-a5', {
+        id: 'q-a5',
+        paper_id: paperId,
+        question_text: 'Q q-a5',
+        question_type: 'MCQ_SINGLE',
+        difficulty: 'EASY',
+        option_a: 'A',
+        option_b: 'B',
+        option_c: 'C',
+        option_d: 'D',
+        correct_option: 'A',
+        marks: 5,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      });
+
+      const pub5 = await publishPaperServerSide(adminId, paperId);
+      expect(pub5.success).toBe(true);
+      expect(pub5.data?.paperId).toBe(paperId);
+    });
+
+    it('guarantees SAVE PAPER METADATA != MODIFY PAPER QUESTIONS across multiple field updates and legacy payloads', async () => {
+      // 1. Create paper with 5 questions
+      const createRes = await createOrUpdatePaperDraft(adminId, {
+        title: 'Initial Title',
+        course: 'DCA',
+        durationMinutes: 30,
+        requiredQuestionCount: 5,
+        totalMarks: 25,
+        status: 'DRAFT',
+      });
+      const paperId = createRes.paperId!;
+      const qIds = ['q-m1', 'q-m2', 'q-m3', 'q-m4', 'q-m5'];
+      mockExamStore.paperQuestions.set(paperId, qIds);
+
+      // 2. Change title -> Save -> Verify questions unchanged
+      await createOrUpdatePaperDraft(adminId, { id: paperId, title: 'Changed Title', status: 'DRAFT' });
+      expect(mockExamStore.paperQuestions.get(paperId)).toEqual(qIds);
+
+      // 3. Change duration -> Save -> Verify questions unchanged
+      await createOrUpdatePaperDraft(adminId, { id: paperId, title: 'Changed Title', durationMinutes: 90, status: 'DRAFT' });
+      expect(mockExamStore.paperQuestions.get(paperId)).toEqual(qIds);
+
+      // 4. Change result visibility -> Save -> Verify questions unchanged
+      await createOrUpdatePaperDraft(adminId, { id: paperId, title: 'Changed Title', showResultToStudent: true, status: 'DRAFT' });
+      expect(mockExamStore.paperQuestions.get(paperId)).toEqual(qIds);
+
+      // 5. Change shuffle setting -> Save -> Verify questions unchanged
+      await createOrUpdatePaperDraft(adminId, { id: paperId, title: 'Changed Title', shuffleQuestions: false, status: 'DRAFT' });
+      expect(mockExamStore.paperQuestions.get(paperId)).toEqual(qIds);
+
+      // 6. Send legacy selectedQuestions: [] -> Verify questions are NOT deleted
+      await createOrUpdatePaperDraft(adminId, { id: paperId, title: 'With Empty Selected Qs', selectedQuestions: [], status: 'DRAFT' });
+      expect(mockExamStore.paperQuestions.get(paperId)).toHaveLength(5);
+    });
+
+    it('maintains strict question isolation between Paper A and Paper B during repeated metadata saves', async () => {
+      // Paper A (5 questions)
+      const resA = await createOrUpdatePaperDraft(adminId, { title: 'Paper A', course: 'DCA', requiredQuestionCount: 5, status: 'DRAFT' });
+      const paperAId = resA.paperId!;
+      const qA = ['qa1', 'qa2', 'qa3', 'qa4', 'qa5'];
+      mockExamStore.paperQuestions.set(paperAId, [...qA]);
+
+      // Paper B (5 questions)
+      const resB = await createOrUpdatePaperDraft(adminId, { title: 'Paper B', course: 'DCA', requiredQuestionCount: 5, status: 'DRAFT' });
+      const paperBId = resB.paperId!;
+      const qB = ['qb1', 'qb2', 'qb3', 'qb4', 'qb5'];
+      mockExamStore.paperQuestions.set(paperBId, [...qB]);
+
+      // Save Paper A metadata repeatedly
+      await createOrUpdatePaperDraft(adminId, { id: paperAId, title: 'Paper A Updated 1', status: 'DRAFT' });
+      await createOrUpdatePaperDraft(adminId, { id: paperAId, title: 'Paper A Updated 2', durationMinutes: 45, status: 'DRAFT' });
+      await createOrUpdatePaperDraft(adminId, { id: paperAId, title: 'Paper A Updated 3', shuffleQuestions: false, status: 'DRAFT' });
+
+      // Verify Paper A = 5 questions, Paper B = 5 questions
+      expect(mockExamStore.paperQuestions.get(paperAId)).toHaveLength(5);
+      expect(mockExamStore.paperQuestions.get(paperBId)).toHaveLength(5);
+
+      // Delete one question from Paper A
+      mockExamStore.paperQuestions.set(paperAId, ['qa1', 'qa2', 'qa3', 'qa4']);
+
+      // Verify Paper A = 4 questions, Paper B = 5 questions
+      expect(mockExamStore.paperQuestions.get(paperAId)).toHaveLength(4);
+      expect(mockExamStore.paperQuestions.get(paperBId)).toHaveLength(5);
+    });
   });
 
   describe('3. Student Access Code & Access Schedule Window Validation', () => {

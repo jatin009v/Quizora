@@ -9,12 +9,12 @@ export const PaperQuestionItemSchema = z.object({
 export const CreatePaperSchema = z
   .object({
     id: z.string().uuid().optional(),
-    title: z.string().min(3, { message: 'Quiz name must be at least 3 characters' }),
+    title: z.string().min(1, { message: 'Quiz name is required' }),
     description: z.string().nullable().optional(),
-    course: z.string().min(2, { message: 'Course name is required' }),
-    durationMinutes: z.number().int().min(1, { message: 'Duration must be at least 1 minute' }),
-    requiredQuestionCount: z.number().int().min(1, { message: 'Required questions must be > 0' }),
-    totalMarks: z.number().positive({ message: 'Total marks must be > 0' }),
+    course: z.string().optional().default(''),
+    durationMinutes: z.number().int().optional().default(0),
+    requiredQuestionCount: z.number().int().optional().default(0),
+    totalMarks: z.number().optional().default(0),
     markingMode: z.enum(['EQUAL_MARKS', 'CUSTOM']).default('EQUAL_MARKS'),
     accessCode: z.string().nullable().optional(),
     startAt: z.string().nullable().optional(),

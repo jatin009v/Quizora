@@ -157,31 +157,8 @@ export function PaperBuilderForm({
 
     const valErr = validatePaperForm(targetStatus);
     if (valErr) {
-      if (targetStatus === 'PUBLISHED' && !paperId && selectedQuestionIds.length !== Number(requiredCount)) {
-        // Save as draft first if clicking publish on brand new paper without questions
-      } else {
-        setErrorMessage(valErr);
-        return;
-      }
-    }
-
-    let effectiveStatus: 'DRAFT' | 'PUBLISHED' = targetStatus;
-    let saveNotice: string | null = null;
-
-    if (targetStatus === 'PUBLISHED') {
-      if (paperQuestions.length !== Number(requiredCount)) {
-        if (!paperId) {
-          effectiveStatus = 'DRAFT';
-          saveNotice = `Paper draft saved. Add ${requiredCount} questions before publishing.`;
-        } else {
-          setErrorMessage(`Cannot publish paper: ${requiredCount} questions required, but ${paperQuestions.length} attached.`);
-          return;
-        }
-      } else {
-        saveNotice = 'Paper published successfully!';
-      }
-    } else {
-      saveNotice = 'Paper draft saved successfully!';
+      setErrorMessage(valErr);
+      return;
     }
 
     setSaving(true);
@@ -193,7 +170,7 @@ export function PaperBuilderForm({
         title: title.trim(),
         description: description.trim(),
         course: course.trim(),
-        durationMinutes: durationMinutes !== '' ? Number(durationMinutes) : 30,
+        durationMinutes: durationMinutes !== '' ? Number(durationMinutes) : 0,
         requiredQuestionCount: requiredCount !== '' ? Number(requiredCount) : 0,
         totalMarks: totalMarks !== '' ? Number(totalMarks) : 0,
         markingMode,
@@ -202,34 +179,64 @@ export function PaperBuilderForm({
         endAt: endAt ? new Date(endAt).toISOString() : null,
         showResultToStudent,
         shuffleQuestions,
-        status: effectiveStatus,
+        status: 'DRAFT', // Always save metadata as DRAFT first
       };
 
-      const url = paperId ? `/api/admin/papers/${paperId}` : '/api/admin/papers';
-      const method = paperId ? 'PUT' : 'POST';
+      let activePaperId = paperId;
 
-      const res = await fetch(url, {
-        method,
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
-
-      const data = await res.json();
-
-      if (res.ok && data.success) {
-        const activePaperId = data.paperId || paperId;
-        setSuccessMessage(saveNotice);
-        setTimeout(() => {
-          if (!paperId && activePaperId) {
-            router.push(`/admin/papers/${activePaperId}/edit`);
-          } else {
-            if (onRefreshData) onRefreshData();
-            router.push('/admin/papers');
-          }
-        }, 1200);
+      if (!activePaperId) {
+        // Create new paper draft
+        const res = await fetch('/api/admin/papers', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+        const data = await res.json();
+        if (res.ok && data.success) {
+          activePaperId = data.paperId;
+        } else {
+          setErrorMessage(data.error || 'Failed to create paper draft');
+          setSaving(false);
+          return;
+        }
       } else {
-        setErrorMessage(data.error || `Failed to save paper ${effectiveStatus.toLowerCase()}`);
+        // Update existing paper metadata
+        const res = await fetch(`/api/admin/papers/${activePaperId}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+        const data = await res.json();
+        if (!res.ok || !data.success) {
+          setErrorMessage(data.error || 'Failed to update paper details');
+          setSaving(false);
+          return;
+        }
       }
+
+      if (targetStatus === 'PUBLISHED' && activePaperId) {
+        // Publish paper via dedicated publish endpoint
+        const pubRes = await fetch(`/api/admin/papers/${activePaperId}/publish`, {
+          method: 'POST',
+        });
+        const pubData = await pubRes.json();
+        if (pubRes.ok && pubData.success) {
+          setSuccessMessage('Paper published successfully!');
+          router.replace('/admin/papers');
+          router.refresh();
+          return;
+        } else {
+          setErrorMessage(pubData.error || 'Failed to publish paper');
+          setSaving(false);
+          return;
+        }
+      }
+
+      // If target status is DRAFT
+      setSuccessMessage('Paper draft saved successfully!');
+      if (onRefreshData) onRefreshData();
+      router.replace('/admin/papers');
+      router.refresh();
     } catch (err: any) {
       setErrorMessage(err.message || 'Server network error');
     } finally {
