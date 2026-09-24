@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { Paper } from '@/types/database';
 import { MagneticButton } from '@/components/ui/MagneticButton';
-import { Plus, Edit3, Award, Clock, FileText, CheckCircle2, Copy, Send, AlertTriangle, X, Trash2, Download } from 'lucide-react';
+import { Plus, Edit3, Award, Clock, FileText, CheckCircle2, Copy, Send, AlertTriangle, X, Trash2, Download, ArrowLeft } from 'lucide-react';
 import Link from 'next/link';
 
 export default function AdminPapersPage() {
@@ -126,11 +126,19 @@ export default function AdminPapersPage() {
             </p>
           </div>
 
-          <Link href="/admin/papers/new">
-            <MagneticButton variant="primary" size="lg">
-              <Plus className="w-5 h-5 mr-2" /> Create New Quiz Paper
-            </MagneticButton>
-          </Link>
+          <div className="flex items-center gap-3">
+            <Link href="/admin">
+              <MagneticButton variant="outline" size="md">
+                <ArrowLeft className="w-4 h-4 mr-2" /> RETURN TO ADMIN
+              </MagneticButton>
+            </Link>
+
+            <Link href="/admin/papers/new">
+              <MagneticButton variant="primary" size="lg">
+                <Plus className="w-5 h-5 mr-2" /> Create New Quiz Paper
+              </MagneticButton>
+            </Link>
+          </div>
         </div>
 
         {/* STATUS FILTER TABS */}

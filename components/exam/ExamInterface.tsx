@@ -70,11 +70,25 @@ export function ExamInterface({
 
   const currentQuestion = questions[currentIndex] || questions[0];
   const isLocked = attemptStatus === 'LOCKED';
+  const isUnloadingRef = React.useRef(false);
+
+  // Unload listener: Mark page as unloading so page refresh doesn't trigger false violations
+  useEffect(() => {
+    const handleUnload = () => {
+      isUnloadingRef.current = true;
+    };
+    window.addEventListener('beforeunload', handleUnload);
+    window.addEventListener('pagehide', handleUnload);
+    return () => {
+      window.removeEventListener('beforeunload', handleUnload);
+      window.removeEventListener('pagehide', handleUnload);
+    };
+  }, []);
 
   // Helper to send proctor events to server safely
   const sendProctorEvent = useCallback(
     async (eventType: ProctorEventType, metadata: Record<string, any> = {}) => {
-      if (attemptStatus === 'SUBMITTED') return;
+      if (attemptStatus === 'SUBMITTED' || isUnloadingRef.current) return;
 
       try {
         const res = await fetch('/api/exam/proctor-events', {
@@ -231,6 +245,7 @@ export function ExamInterface({
     setIsFullscreen(!!document.fullscreenElement);
 
     const handleFullscreenChange = () => {
+      if (isUnloadingRef.current) return;
       const inFS = !!document.fullscreenElement;
       setIsFullscreen(inFS);
       if (!inFS) {
@@ -241,16 +256,19 @@ export function ExamInterface({
     };
 
     const handleVisibilityChange = () => {
+      if (isUnloadingRef.current) return;
       if (document.visibilityState === 'hidden') {
         sendProctorEvent('TAB_SWITCH');
       }
     };
 
     const handleBlur = () => {
+      if (isUnloadingRef.current) return;
       sendProctorEvent('WINDOW_BLUR');
     };
 
     const handleFocus = () => {
+      if (isUnloadingRef.current) return;
       sendProctorEvent('WINDOW_FOCUS');
     };
 
