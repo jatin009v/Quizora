@@ -3,6 +3,7 @@ import { ProctorEventType, AttemptStatus, ExamAttempt } from '@/types/database';
 import { ProctorEventInput, ProctorAttemptFilter } from '@/lib/validation/proctor';
 import { mockExamStore } from '@/lib/exam/service';
 import { mockUserProfiles } from '@/lib/auth/userService';
+import { submitExamAttempt } from '@/lib/exam/submissionService';
 
 // Cooldown window in milliseconds for browser integrity event deduplication
 const EVENT_DEDUPLICATION_COOLDOWN_MS = 2000;

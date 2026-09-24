@@ -1,6 +1,7 @@
 import { createAdminClient } from '@/lib/supabase/admin';
 import { SaveAnswerInput, SaveProgressInput } from '@/lib/validation/exam';
 import { ClientQuestion, ExamAttempt, Answer } from '@/types/database';
+import { submitExamAttempt } from './submissionService';
 
 export interface SaveAnswerResult {
   success: boolean;
@@ -24,6 +25,8 @@ export interface ExamStateResult {
     savedAnswers: Record<string, string>; // questionId -> selectedOption
     remainingSeconds: number;
     lastQuestionIndex: number;
+    showResultToStudent?: boolean;
+    paperTitle?: string;
   };
 }
 
@@ -287,6 +290,17 @@ export async function getExamState(
     if (!attempt) return { success: false, error: 'Attempt not found' };
     if (attempt.user_id !== userId) return { success: false, error: 'Unauthorized attempt access' };
 
+    // SERVER-AUTHORITATIVE EXPIRE CHECK & AUTO-SUBMIT
+    if (
+      attempt.status !== 'SUBMITTED' &&
+      attempt.expires_at &&
+      new Date(attempt.expires_at).getTime() <= Date.now()
+    ) {
+      await submitExamAttempt(userId, attemptId);
+      attempt.status = 'SUBMITTED';
+      attempt.submitted_at = new Date().toISOString();
+    }
+
     // Apply persisted attempt question_order if present (NEVER RESHUFFLE ON REFRESH/REOPEN)
     if (attempt.question_order && Array.isArray(attempt.question_order) && attempt.question_order.length > 0) {
       const qMap = new Map<string, any>();
@@ -312,6 +326,15 @@ export async function getExamState(
     const savedAnswers: Record<string, string> = {};
     savedAnswersList.forEach((a) => {
       savedAnswers[a.question_id] = a.selected_option;
+      const match = rawQuestions.find(
+        (rq) => rq.id === a.question_id || (rq.question_id && rq.question_id === a.question_id)
+      );
+      if (match) {
+        savedAnswers[match.id] = a.selected_option;
+        if (match.question_id) {
+          savedAnswers[match.question_id] = a.selected_option;
+        }
+      }
     });
 
     const remainingSeconds = attempt.expires_at

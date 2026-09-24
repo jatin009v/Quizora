@@ -187,26 +187,48 @@ export async function createOrRecoverExamAttempt(
     let existingAttempt: ExamAttempt | null = null;
 
     if (process.env.NODE_ENV === 'test' || !process.env.NEXT_PUBLIC_SUPABASE_URL?.includes('supabase.co')) {
-      paper = {
-        id: paperId,
-        title: 'DCA Exam',
-        description: null,
-        course: 'DCA',
-        duration_minutes: 60,
-        total_marks: 50,
-        required_question_count: 50,
-        marking_mode: 'EQUAL_MARKS',
-        status: 'PUBLISHED',
-        access_code: 'DCA-7K4P9X',
-        start_at: null,
-        end_at: null,
-        show_result_to_student: false,
-        shuffle_questions: true,
-        created_by: 'usr-admin-001',
-        published_at: nowIso,
-        created_at: nowIso,
-        updated_at: nowIso,
-      };
+      const storePaper = mockExamStore.papers.get(paperId);
+      paper = storePaper
+        ? {
+            id: paperId,
+            title: storePaper.title || 'DCA Exam',
+            description: storePaper.description || null,
+            course: storePaper.course || 'DCA',
+            duration_minutes: storePaper.duration_minutes || 60,
+            total_marks: storePaper.total_marks || 50,
+            required_question_count: storePaper.required_question_count || 50,
+            marking_mode: storePaper.marking_mode || 'EQUAL_MARKS',
+            status: storePaper.status || 'PUBLISHED',
+            access_code: storePaper.access_code || 'DCA-7K4P9X',
+            start_at: storePaper.start_at || null,
+            end_at: storePaper.end_at || null,
+            show_result_to_student: storePaper.show_result_to_student ?? false,
+            shuffle_questions: storePaper.shuffle_questions ?? true,
+            created_by: storePaper.created_by || 'usr-admin-001',
+            published_at: storePaper.published_at || nowIso,
+            created_at: storePaper.created_at || nowIso,
+            updated_at: storePaper.updated_at || nowIso,
+          }
+        : {
+            id: paperId,
+            title: 'DCA Exam',
+            description: null,
+            course: 'DCA',
+            duration_minutes: 60,
+            total_marks: 50,
+            required_question_count: 50,
+            marking_mode: 'EQUAL_MARKS',
+            status: 'PUBLISHED',
+            access_code: 'DCA-7K4P9X',
+            start_at: null,
+            end_at: null,
+            show_result_to_student: false,
+            shuffle_questions: true,
+            created_by: 'usr-admin-001',
+            published_at: nowIso,
+            created_at: nowIso,
+            updated_at: nowIso,
+          };
 
       existingAttempt = Array.from(mockExamStore.attempts.values()).find(
         (a) => a.user_id === userId && a.paper_id === paperId

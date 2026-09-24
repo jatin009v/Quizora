@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { ClientQuestion, ExamAttempt, ProctorEventType, AttemptStatus } from '@/types/database';
 import { answerQueueEngine, SaveStatus } from '@/lib/exam/answerQueue';
 import {
@@ -11,19 +11,22 @@ import {
   ShieldCheck,
   ChevronLeft,
   ChevronRight,
-  Zap,
   Lock,
   Maximize2,
   X,
   EyeOff,
+  Send,
+  Award,
 } from 'lucide-react';
 import { MagneticButton } from '../ui/MagneticButton';
+import Link from 'next/link';
 
 interface ExamInterfaceProps {
   attempt: ExamAttempt;
   questions: ClientQuestion[];
   initialAnswers?: Record<string, string>;
   initialQuestionIndex?: number;
+  showResultToStudent?: boolean;
 }
 
 export function ExamInterface({
@@ -31,6 +34,7 @@ export function ExamInterface({
   questions,
   initialAnswers = {},
   initialQuestionIndex = 0,
+  showResultToStudent = false,
 }: ExamInterfaceProps) {
   const [attempt, setAttempt] = useState<ExamAttempt>(initialAttempt);
   const [currentIndex, setCurrentIndex] = useState(initialQuestionIndex);
@@ -45,7 +49,17 @@ export function ExamInterface({
   // Fullscreen & Overlay States
   const [isFullscreen, setIsFullscreen] = useState<boolean>(true);
   const [warningMessage, setWarningMessage] = useState<string | null>(null);
-  const [isSimulatingOffline, setIsSimulatingOffline] = useState(false);
+
+  // Submission States
+  const [showSubmitModal, setShowSubmitModal] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
+  const [submissionResult, setSubmissionResult] = useState<{
+    score?: number;
+    totalMarks?: number;
+    percentage?: number;
+    submittedAt?: string;
+  } | null>(null);
 
   const [remainingTime, setRemainingTime] = useState(() => {
     if (initialAttempt.expires_at) {
@@ -111,19 +125,76 @@ export function ExamInterface({
     };
   }, []);
 
-  // 2. Timer Countdown
+  // 2. Final Submission Handler
+  const executeSubmission = useCallback(async () => {
+    setIsSubmitting(true);
+    setSubmitError(null);
+
+    try {
+      // Step A: Ensure all pending writes are flushed first
+      const isFlushed = await answerQueueEngine.flushPendingAnswers();
+      if (!isFlushed || answerQueueEngine.hasPendingWrites()) {
+        setSubmitError('Some answers are still syncing. Please wait for connection.');
+        setIsSubmitting(false);
+        return;
+      }
+
+      // Step B: Send official submit request to server
+      const res = await fetch('/api/exam/submit', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ attemptId: attempt.id }),
+      });
+
+      const json = await res.json();
+      if (res.ok && json.success) {
+        setAttemptStatus('SUBMITTED');
+        setShowSubmitModal(false);
+        if (json.data) {
+          setSubmissionResult({
+            score: json.data.score,
+            totalMarks: json.data.totalMarks,
+            percentage: json.data.percentage,
+            submittedAt: json.data.submittedAt,
+          });
+        }
+      } else {
+        setSubmitError(json.error || 'Failed to submit exam. Please try again.');
+      }
+    } catch {
+      setSubmitError('Network failure submitting exam. Please check connection and retry.');
+    } finally {
+      setIsSubmitting(false);
+    }
+  }, [attempt.id]);
+
+  // 3. Timer Countdown & Automatic Server Submission on Expiry
   useEffect(() => {
     if (isLocked || attemptStatus === 'SUBMITTED') return;
 
+    if (remainingTime <= 0) {
+      executeSubmission();
+      return;
+    }
+
     const timer = setInterval(() => {
-      setRemainingTime((prev) => (prev > 0 ? prev - 1 : 0));
+      setRemainingTime((prev) => {
+        if (prev <= 1) {
+          clearInterval(timer);
+          executeSubmission();
+          return 0;
+        }
+        return prev - 1;
+      });
     }, 1000);
 
     return () => clearInterval(timer);
-  }, [isLocked, attemptStatus]);
+  }, [isLocked, attemptStatus, remainingTime, executeSubmission]);
 
-  // 3. Status Polling for Proctor Lock/Reopen Synchronization
+  // 4. Status Polling for Proctor Lock/Reopen Synchronization
   useEffect(() => {
+    if (attemptStatus === 'SUBMITTED') return;
+
     const interval = setInterval(async () => {
       try {
         const res = await fetch(`/api/exam/attempt/${attempt.id}`);
@@ -151,13 +222,12 @@ export function ExamInterface({
     }, 4000);
 
     return () => clearInterval(interval);
-  }, [attempt.id]);
+  }, [attempt.id, attemptStatus]);
 
-  // 4. Browser Integrity Listeners (Fullscreen, Visibility, Focus/Blur)
+  // 5. Browser Integrity Listeners (Fullscreen, Visibility, Focus/Blur)
   useEffect(() => {
     if (isLocked || attemptStatus === 'SUBMITTED') return;
 
-    // Check initial fullscreen status
     setIsFullscreen(!!document.fullscreenElement);
 
     const handleFullscreenChange = () => {
@@ -224,22 +294,14 @@ export function ExamInterface({
       [currentQuestion.id]: option,
     }));
 
-    // 2. Dispatch to Persistence Queue Engine
-    if (isSimulatingOffline) {
-      setSaveStatuses((prev) => ({
-        ...prev,
-        [currentQuestion.id]: 'PENDING_RETRY',
-      }));
-    } else {
-      answerQueueEngine.enqueueAnswer(attempt.id, currentQuestion.id, option);
-    }
+    // 2. Dispatch to Persistence Queue Engine immediately
+    answerQueueEngine.enqueueAnswer(attempt.id, currentQuestion.id, option);
   };
 
   const handleNavigateQuestion = async (newIndex: number) => {
     if (newIndex < 0 || newIndex >= questions.length || isLocked) return;
     setCurrentIndex(newIndex);
 
-    // Persist current question index to server asynchronously
     try {
       await fetch('/api/exam/progress', {
         method: 'POST',
@@ -255,6 +317,80 @@ export function ExamInterface({
   };
 
   const currentSaveStatus = currentQuestion ? saveStatuses[currentQuestion.id] || 'IDLE' : 'IDLE';
+
+  // 6. EXAM SUBMITTED VIEW
+  if (attemptStatus === 'SUBMITTED') {
+    return (
+      <div className="relative w-full max-w-3xl mx-auto bg-white rounded-2xl border-4 border-brand-black shadow-editorial-lg overflow-hidden my-12 p-8 text-center space-y-6">
+        <div className="w-20 h-20 bg-emerald-100 border-4 border-emerald-500 rounded-full flex items-center justify-center mx-auto text-emerald-600">
+          <CheckCircle2 className="w-10 h-10" />
+        </div>
+
+        <div className="space-y-2">
+          <span className="bg-emerald-600 text-white px-3 py-1 rounded font-mono text-xs font-bold uppercase tracking-wider">
+            EXAM SUBMITTED
+          </span>
+          <h2 className="font-display font-black text-3xl md:text-4xl uppercase text-brand-black">
+            Examination Complete
+          </h2>
+          <p className="text-slate-600 text-sm max-w-md mx-auto leading-relaxed">
+            Your examination responses have been saved and successfully submitted to the authoritative server.
+          </p>
+        </div>
+
+        <div className="bg-warm-beige p-6 rounded-xl border-3 border-brand-black text-left space-y-3 font-mono text-sm max-w-lg mx-auto">
+          <div className="flex justify-between border-b border-slate-300 pb-2">
+            <span className="text-slate-600">Attempt ID:</span>
+            <span className="font-bold text-brand-black">{attempt.id}</span>
+          </div>
+          <div className="flex justify-between border-b border-slate-300 pb-2">
+            <span className="text-slate-600">Questions Answered:</span>
+            <span className="font-bold text-burnt-orange">
+              {Object.keys(answers).length} / {questions.length}
+            </span>
+          </div>
+          <div className="flex justify-between border-b border-slate-300 pb-2">
+            <span className="text-slate-600">Submitted At:</span>
+            <span className="font-bold text-slate-800">
+              {submissionResult?.submittedAt
+                ? new Date(submissionResult.submittedAt).toLocaleTimeString()
+                : new Date().toLocaleTimeString()}
+            </span>
+          </div>
+
+          {showResultToStudent && submissionResult && (
+            <div className="pt-2 border-t-2 border-brand-black space-y-2">
+              <div className="flex justify-between font-bold text-base">
+                <span>Score Achieved:</span>
+                <span className="text-vibrant-pink">
+                  {submissionResult.score} / {submissionResult.totalMarks}
+                </span>
+              </div>
+              <div className="flex justify-between font-bold text-base">
+                <span>Percentage:</span>
+                <span className="text-emerald-700">{submissionResult.percentage}%</span>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {!showResultToStudent && (
+          <p className="text-xs text-slate-500 font-mono italic max-w-md mx-auto">
+            Official scores are subject to institutional declaration and paper result visibility policy.
+          </p>
+        )}
+
+        <div className="pt-4">
+          <Link
+            href="/student"
+            className="inline-flex items-center gap-2 py-3 px-6 bg-brand-black hover:bg-slate-800 text-white rounded-xl font-display font-black text-sm uppercase tracking-wider border-2 border-brand-black shadow-editorial transition-colors"
+          >
+            <Award className="w-4 h-4 text-burnt-orange" /> Return to Student Portal
+          </Link>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="relative w-full max-w-6xl mx-auto bg-canvas rounded-2xl border-4 border-brand-black shadow-editorial-lg overflow-hidden my-8">
@@ -289,7 +425,7 @@ export function ExamInterface({
         </div>
       )}
 
-      {/* 2. FULLSCREEN EXIT OVERLAY (OBSCURES EXAM CONTENT) */}
+      {/* 2. FULLSCREEN EXIT OVERLAY */}
       {!isFullscreen && !isLocked && (
         <div className="absolute inset-0 z-40 bg-brand-black/90 backdrop-blur-sm flex items-center justify-center p-6 text-center text-white">
           <div className="bg-slate-900 p-8 rounded-2xl border-4 border-vibrant-pink shadow-editorial max-w-md space-y-6">
@@ -319,7 +455,65 @@ export function ExamInterface({
         </div>
       )}
 
-      {/* 3. INTEGRITY WARNING TOAST / BANNER */}
+      {/* 3. SUBMIT CONFIRMATION MODAL */}
+      {showSubmitModal && (
+        <div className="absolute inset-0 z-50 bg-brand-black/90 backdrop-blur-md flex items-center justify-center p-6 text-center text-white">
+          <div className="bg-slate-900 p-8 rounded-2xl border-4 border-emerald-500 shadow-editorial-pink max-w-md space-y-6">
+            <div className="w-14 h-14 bg-emerald-500/20 border-2 border-emerald-500 rounded-full flex items-center justify-center mx-auto text-emerald-400">
+              <Send className="w-7 h-7" />
+            </div>
+            <div className="space-y-2">
+              <span className="bg-emerald-600 text-white px-3 py-1 rounded font-mono text-xs font-bold uppercase tracking-wider">
+                CONFIRM SUBMISSION
+              </span>
+              <h3 className="font-display font-black text-2xl uppercase text-warm-beige">
+                Submit Examination?
+              </h3>
+            </div>
+            <p className="text-slate-300 font-sans text-xs leading-relaxed">
+              Are you sure you want to submit your exam? You will not be able to change your answers after submission.
+            </p>
+
+            <div className="bg-slate-800 p-3.5 rounded-xl border border-slate-700 text-xs font-mono text-slate-300 flex justify-between">
+              <span>Total Answered:</span>
+              <span className="font-bold text-burnt-orange">
+                {Object.keys(answers).length} / {questions.length} Questions
+              </span>
+            </div>
+
+            {submitError && (
+              <div className="bg-red-900/40 border border-red-500 text-red-300 p-3 rounded-xl text-xs font-mono">
+                {submitError}
+              </div>
+            )}
+
+            <div className="flex items-center gap-3 pt-2">
+              <button
+                disabled={isSubmitting}
+                onClick={() => setShowSubmitModal(false)}
+                className="flex-1 py-3 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl font-display font-bold text-xs uppercase tracking-wider border border-slate-600"
+              >
+                CANCEL
+              </button>
+              <button
+                disabled={isSubmitting}
+                onClick={executeSubmission}
+                className="flex-1 py-3 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl font-display font-black text-xs uppercase tracking-wider border-2 border-brand-black shadow-editorial flex items-center justify-center gap-2"
+              >
+                {isSubmitting ? (
+                  <>
+                    <RefreshCw className="w-4 h-4 animate-spin" /> SUBMITTING...
+                  </>
+                ) : (
+                  'SUBMIT'
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 4. INTEGRITY WARNING TOAST */}
       {warningMessage && !isLocked && (
         <div className="bg-burnt-orange text-white px-6 py-3 border-b-2 border-brand-black flex items-center justify-between font-mono text-xs font-bold shadow-editorial z-30">
           <div className="flex items-center gap-2">
@@ -343,15 +537,15 @@ export function ExamInterface({
           </div>
           <div>
             <h2 className="font-display font-black text-lg tracking-wide text-warm-beige uppercase">
-              DCA Examination Runner
+              DCA Examination
             </h2>
-            <p className="text-xs text-slate-300">
-              Attempt ID: <span className="font-mono text-burnt-orange font-bold">{attempt.id.substring(0, 8)}...</span> | Integrity Signals: <span className="text-vibrant-pink font-bold">{tabSwitchCount} Events</span>
+            <p className="text-xs text-slate-300 font-mono">
+              Attempt ID: <span className="text-burnt-orange font-bold">{attempt.id.substring(0, 8)}...</span>
             </p>
           </div>
         </div>
 
-        {/* TIMER & SYNC STATUS */}
+        {/* TIMER & STATUS INDICATOR */}
         <div className="flex items-center gap-4">
           <div className="flex items-center gap-2 bg-slate-900 border-2 border-burnt-orange px-4 py-2 rounded-lg">
             <Clock className="w-4 h-4 text-burnt-orange animate-pulse" />
@@ -362,15 +556,15 @@ export function ExamInterface({
 
           <div className="hidden sm:flex items-center gap-2 bg-slate-900 border-2 border-slate-700 px-3 py-2 rounded-lg text-xs">
             <ShieldCheck className="w-4 h-4 text-emerald-400" />
-            <span className="text-slate-300">Authoritative Clock</span>
+            <span className="text-slate-300 font-mono">Secure Session</span>
           </div>
         </div>
       </div>
 
-      {/* PERSISTENCE & INTEGRITY BAR */}
-      <div className="bg-warm-beige px-6 py-2 border-b-2 border-brand-black flex flex-wrap items-center justify-between gap-2 text-xs font-mono font-bold text-brand-black">
+      {/* HUMAN-FRIENDLY SAVE STATUS BAR */}
+      <div className="bg-warm-beige px-6 py-2 border-b-2 border-brand-black flex items-center justify-between text-xs font-mono font-bold text-brand-black">
         <div className="flex items-center gap-2">
-          <span>SYNC STATUS:</span>
+          <span>STATUS:</span>
           {currentSaveStatus === 'SAVED' && (
             <span className="inline-flex items-center gap-1 text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded-full border border-emerald-400">
               <CheckCircle2 className="w-3.5 h-3.5" /> Saved ✓ {lastSavedTime ? `(${lastSavedTime})` : ''}
@@ -378,12 +572,12 @@ export function ExamInterface({
           )}
           {currentSaveStatus === 'SAVING' && (
             <span className="inline-flex items-center gap-1 text-amber-700 bg-amber-100 px-2 py-0.5 rounded-full border border-amber-400 animate-pulse">
-              <RefreshCw className="w-3.5 h-3.5 animate-spin" /> Saving to Supabase...
+              <RefreshCw className="w-3.5 h-3.5 animate-spin" /> Saving...
             </span>
           )}
           {currentSaveStatus === 'PENDING_RETRY' && (
             <span className="inline-flex items-center gap-1 text-burnt-orange bg-burnt-orange-light px-2 py-0.5 rounded-full border border-burnt-orange">
-              <AlertTriangle className="w-3.5 h-3.5" /> Network issue, pending retry...
+              <AlertTriangle className="w-3.5 h-3.5" /> Connection lost — retrying...
             </span>
           )}
           {currentSaveStatus === 'IDLE' && answers[currentQuestion?.id] && (
@@ -396,16 +590,8 @@ export function ExamInterface({
           )}
         </div>
 
-        <div className="flex items-center gap-3">
-          <label className="flex items-center gap-1.5 cursor-pointer text-slate-700 hover:text-brand-black select-none">
-            <input
-              type="checkbox"
-              checked={isSimulatingOffline}
-              onChange={(e) => setIsSimulatingOffline(e.target.checked)}
-              className="accent-burnt-orange w-4 h-4 cursor-pointer"
-            />
-            <span>Simulate Network Glitch</span>
-          </label>
+        <div className="text-xs text-slate-600">
+          {Object.keys(answers).length} of {questions.length} Answered
         </div>
       </div>
 
@@ -422,9 +608,6 @@ export function ExamInterface({
                 </span>
                 <span className="bg-vibrant-pink-light text-vibrant-pink border border-vibrant-pink px-2.5 py-0.5 rounded-md text-xs font-bold font-mono">
                   {currentQuestion?.marks || 1} Marks
-                </span>
-                <span className="bg-warm-beige text-brand-black border border-brand-black px-2.5 py-0.5 rounded-md text-xs font-bold font-mono uppercase">
-                  {currentQuestion?.difficulty || 'MEDIUM'}
                 </span>
               </div>
             </div>
@@ -494,19 +677,27 @@ export function ExamInterface({
               <ChevronLeft className="w-5 h-5" /> Previous
             </MagneticButton>
 
-            <span className="text-xs font-mono text-slate-500 font-bold hidden sm:inline">
-              Immediate Save Active • No &quot;Submit&quot; required for answers
-            </span>
-
-            <MagneticButton
-              variant="primary"
-              size="md"
-              disabled={currentIndex === questions.length - 1 || isLocked}
-              onClick={() => handleNavigateQuestion(currentIndex + 1)}
-              className="flex items-center gap-2"
-            >
-              Next <ChevronRight className="w-5 h-5" />
-            </MagneticButton>
+            {currentIndex === questions.length - 1 ? (
+              <MagneticButton
+                variant="primary"
+                size="md"
+                disabled={isLocked}
+                onClick={() => setShowSubmitModal(true)}
+                className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-500 text-white"
+              >
+                SUBMIT EXAM <Send className="w-4 h-4" />
+              </MagneticButton>
+            ) : (
+              <MagneticButton
+                variant="primary"
+                size="md"
+                disabled={currentIndex === questions.length - 1 || isLocked}
+                onClick={() => handleNavigateQuestion(currentIndex + 1)}
+                className="flex items-center gap-2"
+              >
+                Next <ChevronRight className="w-5 h-5" />
+              </MagneticButton>
+            )}
           </div>
         </div>
 
@@ -516,11 +707,11 @@ export function ExamInterface({
             <h4 className="font-display font-black text-base text-brand-black uppercase tracking-wider mb-4 border-b-2 border-brand-black pb-2 flex items-center justify-between">
               <span>Question Palette</span>
               <span className="text-xs font-mono font-normal text-slate-600">
-                {Object.keys(answers).length} / {questions.length} Answered
+                {Object.keys(answers).length} / {questions.length}
               </span>
             </h4>
 
-            {/* GRID OF QUESTIONS 1 TO 50 */}
+            {/* GRID OF QUESTIONS 1 TO N */}
             <div className="grid grid-cols-5 gap-2 max-h-[360px] overflow-y-auto p-1">
               {questions.map((q, idx) => {
                 const isAnswered = !!answers[q.id];
@@ -546,7 +737,7 @@ export function ExamInterface({
             </div>
           </div>
 
-          {/* LEGEND & RECOVERY */}
+          {/* PALETTE LEGEND */}
           <div className="mt-6 pt-4 border-t-2 border-brand-black space-y-3">
             <div className="grid grid-cols-2 gap-2 text-xs font-mono">
               <div className="flex items-center gap-2">
@@ -557,21 +748,19 @@ export function ExamInterface({
                 <span className="w-3 h-3 rounded bg-vibrant-pink border border-brand-black"></span>
                 <span>Current</span>
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 font-mono col-span-2">
                 <span className="w-3 h-3 rounded bg-white border border-slate-400"></span>
                 <span>Unanswered</span>
               </div>
-              <div className="flex items-center gap-2">
-                <span className="w-3 h-3 rounded bg-emerald-500 border border-brand-black"></span>
-                <span>Saved ✓</span>
-              </div>
             </div>
 
+            {/* QUICK SUBMIT BUTTON FOR ACCESSIBILITY */}
             <button
-              onClick={() => window.location.reload()}
-              className="w-full py-2.5 px-3 bg-deep-blue text-white rounded-lg font-display font-bold text-xs uppercase tracking-wider border-2 border-brand-black shadow-editorial hover:bg-deep-blue-dark flex items-center justify-center gap-2 cursor-pointer"
+              disabled={isLocked}
+              onClick={() => setShowSubmitModal(true)}
+              className="w-full py-2.5 px-3 bg-brand-black hover:bg-slate-800 text-white rounded-lg font-display font-bold text-xs uppercase tracking-wider border-2 border-brand-black shadow-editorial flex items-center justify-center gap-2 cursor-pointer transition-colors"
             >
-              <Zap className="w-4 h-4 text-vibrant-pink" /> Test Refresh Recovery
+              <Send className="w-4 h-4 text-burnt-orange" /> Submit Exam
             </button>
           </div>
         </div>

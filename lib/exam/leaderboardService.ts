@@ -1,5 +1,6 @@
 import { createAdminClient } from '@/lib/supabase/admin';
 import { mockExamStore } from './service';
+import { submitExamAttempt } from './submissionService';
 
 export interface LeaderboardEntry {
   rank: number;
@@ -55,6 +56,23 @@ export async function getPaperLeaderboard(paperId: string): Promise<PaperLeaderb
         .eq('paper_id', paperId);
 
       if (attData) rawAttempts = attData;
+    }
+
+    // Auto-finalize any expired attempts that are still IN_PROGRESS or LOCKED
+    for (const att of rawAttempts) {
+      if (
+        att.status !== 'SUBMITTED' &&
+        att.expires_at &&
+        new Date(att.expires_at).getTime() <= Date.now()
+      ) {
+        const subRes = await submitExamAttempt(att.user_id, att.id);
+        if (subRes.success && subRes.data) {
+          att.status = 'SUBMITTED';
+          att.score = subRes.data.score;
+          att.total_marks = subRes.data.totalMarks;
+          att.submitted_at = subRes.data.submittedAt;
+        }
+      }
     }
 
     const totalParticipants = rawAttempts.length;

@@ -66,6 +66,30 @@ class AnswerQueueEngine {
     this.processQueue();
   }
 
+  public hasPendingWrites(): boolean {
+    if (this.queue.length > 0) return true;
+    for (const status of this.statusMap.values()) {
+      if (status === 'SAVING' || status === 'PENDING_RETRY') return true;
+    }
+    return false;
+  }
+
+  public async flushPendingAnswers(): Promise<boolean> {
+    if (!this.hasPendingWrites()) return true;
+
+    if (!this.isProcessing) {
+      this.processQueue();
+    }
+
+    const startTime = Date.now();
+    while (Date.now() - startTime < 5000) {
+      if (!this.hasPendingWrites()) return true;
+      await new Promise((res) => setTimeout(res, 200));
+    }
+
+    return !this.hasPendingWrites();
+  }
+
   private async processQueue() {
     if (this.isProcessing || this.queue.length === 0) return;
     this.isProcessing = true;

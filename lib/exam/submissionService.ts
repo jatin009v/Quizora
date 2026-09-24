@@ -84,11 +84,32 @@ export async function submitExamAttempt(
       return { success: false, error: 'Unauthorized attempt submission', code: 'UNAUTHORIZED_ATTEMPT' };
     }
 
-    // Status check: Must be IN_PROGRESS
-    if (attempt.status !== 'IN_PROGRESS') {
+    // Idempotency: If attempt is already SUBMITTED, return existing score & metadata safely
+    if (attempt.status === 'SUBMITTED') {
+      const score = Number(attempt.score || 0);
+      const totalMarks = attempt.total_marks || totalPaperMarks;
+      const percentage = Number(((score / totalMarks) * 100).toFixed(2));
+      return {
+        success: true,
+        data: {
+          attemptId,
+          score,
+          totalMarks,
+          percentage,
+          submittedAt: attempt.submitted_at || nowIso,
+          completionTimeSeconds: 0,
+        },
+      };
+    }
+
+    // Expiry Check: If locked or in progress, check if exam timer expired
+    const isExpired = attempt.expires_at ? new Date(attempt.expires_at).getTime() <= Date.now() : false;
+
+    // Status check: Must be IN_PROGRESS, or LOCKED if timer expired
+    if (attempt.status !== 'IN_PROGRESS' && !(attempt.status === 'LOCKED' && isExpired)) {
       return {
         success: false,
-        error: `Cannot submit attempt: status is already ${attempt.status}`,
+        error: `Cannot submit attempt: status is ${attempt.status.toLowerCase()}`,
         code: `ATTEMPT_${attempt.status}`,
       };
     }
