@@ -90,7 +90,7 @@ export async function logProctorEvent(
 
   // Record proctor event
   const newEventRecord = {
-    id: `ev-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+    id: crypto.randomUUID(),
     attempt_id: attempt.id,
     user_id: attempt.user_id,
     paper_id: attempt.paper_id,
@@ -210,7 +210,7 @@ export async function logProctorEvent(
   // If locked, insert EXAM_LOCKED proctor event
   if (shouldLock) {
     const lockEventRecord = {
-      id: `ev-lock-${Date.now()}`,
+      id: crypto.randomUUID(),
       attempt_id: attempt.id,
       user_id: attempt.user_id,
       paper_id: attempt.paper_id,
@@ -594,7 +594,7 @@ export async function proctorLockAttempt(attemptId: string, proctorUserId: strin
     mockExamStore.attempts.set(attemptId, { ...attempt });
 
     mockProctorEvents.push({
-      id: `ev-lock-${Date.now()}`,
+      id: crypto.randomUUID(),
       attempt_id: attempt.id,
       user_id: attempt.user_id,
       paper_id: attempt.paper_id,
@@ -627,6 +627,7 @@ export async function proctorLockAttempt(attemptId: string, proctorUserId: strin
   if (updateErr) throw new Error(`Failed to lock attempt: ${updateErr.message}`);
 
   await adminClient.from('proctor_events').insert({
+    id: crypto.randomUUID(),
     attempt_id: attempt.id,
     user_id: attempt.user_id,
     paper_id: attempt.paper_id,
@@ -660,7 +661,7 @@ export async function proctorReopenAttempt(attemptId: string, proctorUserId: str
     if (attempt.expires_at) {
       const expireTime = new Date(attempt.expires_at).getTime();
       if (now.getTime() >= expireTime) {
-        throw new Error('Cannot reopen attempt: examination duration has already expired');
+        throw new Error('Attempt cannot be reopened because the exam duration has expired.');
       }
     }
 
@@ -670,7 +671,7 @@ export async function proctorReopenAttempt(attemptId: string, proctorUserId: str
     mockExamStore.attempts.set(attemptId, { ...attempt });
 
     mockProctorEvents.push({
-      id: `ev-reopen-${Date.now()}`,
+      id: crypto.randomUUID(),
       attempt_id: attempt.id,
       user_id: attempt.user_id,
       paper_id: attempt.paper_id,
@@ -703,7 +704,7 @@ export async function proctorReopenAttempt(attemptId: string, proctorUserId: str
   if (attempt.expires_at) {
     const expireTime = new Date(attempt.expires_at).getTime();
     if (now.getTime() >= expireTime) {
-      throw new Error('Cannot reopen attempt: examination duration has already expired');
+      throw new Error('Attempt cannot be reopened because the exam duration has expired.');
     }
   }
 
@@ -715,6 +716,7 @@ export async function proctorReopenAttempt(attemptId: string, proctorUserId: str
   if (updateErr) throw new Error(`Failed to reopen attempt: ${updateErr.message}`);
 
   await adminClient.from('proctor_events').insert({
+    id: crypto.randomUUID(),
     attempt_id: attempt.id,
     user_id: attempt.user_id,
     paper_id: attempt.paper_id,

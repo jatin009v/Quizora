@@ -3,11 +3,19 @@ import { createOrRecoverExamAttempt, validateAccessCodeServerSide } from '../lib
 import { createOrUpdatePaperDraft } from '../lib/exam/paperService';
 import { publishPaperServerSide } from '../lib/exam/publishService';
 import { mockExamStore, getExamState, saveExamAnswer, saveExamProgress } from '../lib/exam/service';
-import { listStudentAttempts, getProctorAttemptDetails, proctorLockAttempt, proctorReopenAttempt } from '../lib/proctor/proctorService';
+import {
+  listStudentAttempts,
+  getProctorAttemptDetails,
+  proctorLockAttempt,
+  proctorReopenAttempt,
+  logProctorEvent,
+  mockProctorEvents,
+} from '../lib/proctor/proctorService';
 import { formatForDateTimeInput } from '../components/admin/PaperBuilderForm';
 
 describe('Quizora Step 13 — Emergency Production Concurrency, Performance & Consistency Suite', () => {
   const adminId = 'usr-admin-step13';
+  const studentId = 'usr-student-audit';
 
   beforeEach(() => {
     mockExamStore.attempts.clear();
@@ -15,6 +23,7 @@ describe('Quizora Step 13 — Emergency Production Concurrency, Performance & Co
     mockExamStore.paperQuestions.clear();
     mockExamStore.questions.clear();
     mockExamStore.papers.clear();
+    mockProctorEvents.length = 0;
   });
 
   describe('1. Concurrency & Idempotency Tests (10 to 200 Parallel Requests)', () => {
@@ -198,7 +207,7 @@ describe('Quizora Step 13 — Emergency Production Concurrency, Performance & Co
         endAt: initialEndIso,
         status: 'DRAFT',
       });
-      expect(createResId(draftRes)).toBeDefined();
+      expect(draftRes.paperId).toBeDefined();
       const paperId = draftRes.paperId!;
 
       // Simulate 10 consecutive save/reload cycles
@@ -260,8 +269,204 @@ describe('Quizora Step 13 — Emergency Production Concurrency, Performance & Co
       expect(finalPaper.access_code).toBe(accessCode);
     });
   });
-});
 
-function createResId(res: any): string | undefined {
-  return res.paperId;
-}
+  describe('4. Focused 11-Point Verification Audit Suite', () => {
+    it('Point 1: rejects access when entering before start_at schedule window', async () => {
+      const now = new Date();
+      const futureStart = new Date(now.getTime() + 3600000).toISOString(); // 1 hour in future
+      const futureEnd = new Date(now.getTime() + 7200000).toISOString();
+
+      mockExamStore.papers.set('p-early', {
+        id: 'p-early',
+        title: 'Future Paper',
+        access_code: 'EARLY100',
+        status: 'PUBLISHED',
+        start_at: futureStart,
+        end_at: futureEnd,
+      });
+
+      const res = await validateAccessCodeServerSide(studentId, 'EARLY100');
+      expect(res.success).toBe(false);
+      expect(res.code).toBe('EXAM_NOT_STARTED');
+      expect(res.error).toContain('has not started yet');
+    });
+
+    it('Point 2: allows entry during valid active schedule window', async () => {
+      const now = new Date();
+      const pastStart = new Date(now.getTime() - 600000).toISOString();
+      const futureEnd = new Date(now.getTime() + 3600000).toISOString();
+
+      mockExamStore.papers.set('p-valid-sched', {
+        id: 'p-valid-sched',
+        title: 'Active Schedule Paper',
+        access_code: 'ACTIVE100',
+        status: 'PUBLISHED',
+        start_at: pastStart,
+        end_at: futureEnd,
+      });
+
+      const res = await validateAccessCodeServerSide(studentId, 'ACTIVE100');
+      expect(res.success).toBe(true);
+      expect(res.data?.paperId).toBe('p-valid-sched');
+    });
+
+    it('Points 3, 4, 5: switching tabs 3 times records 3 integrity events, locks attempt, and timeline displays all 3 events', async () => {
+      const paperId = 'p-tablock';
+      const now = new Date();
+      const expiresAt = new Date(now.getTime() + 3600000).toISOString();
+
+      mockExamStore.papers.set(paperId, {
+        id: paperId,
+        title: 'Tab Lock Exam',
+        access_code: 'TABLOCK1',
+        status: 'PUBLISHED',
+        duration_minutes: 60,
+        total_marks: 10,
+        required_question_count: 1,
+        created_by: adminId,
+        published_at: now.toISOString(),
+      });
+
+      const startRes = await createOrRecoverExamAttempt(studentId, paperId);
+      expect(startRes.success).toBe(true);
+      const attemptId = startRes.data!.attemptId;
+
+      // Update attempt in store to have 60 min expiry
+      mockExamStore.attempts.get(attemptId)!.expires_at = expiresAt;
+
+      // 3 tab switches with time delays past cooldown window (2000ms)
+      // Event 1
+      await logProctorEvent(
+        { attemptId, eventType: 'TAB_SWITCH', questionIndex: 0 },
+        studentId
+      );
+      // Fast forward time slightly for test deduplication bypass
+      mockProctorEvents[0].event_time = new Date(now.getTime() - 10000).toISOString();
+
+      // Event 2
+      await logProctorEvent(
+        { attemptId, eventType: 'TAB_SWITCH', questionIndex: 0 },
+        studentId
+      );
+      mockProctorEvents[1].event_time = new Date(now.getTime() - 5000).toISOString();
+
+      // Event 3 (Triggers LOCK)
+      const lockRes = await logProctorEvent(
+        { attemptId, eventType: 'TAB_SWITCH', questionIndex: 0 },
+        studentId
+      );
+
+      expect(lockRes.isLocked).toBe(true);
+      expect(lockRes.status).toBe('LOCKED');
+
+      // Verify proctor attempt details timeline displays integrity events belonging to this attemptId
+      const details = await getProctorAttemptDetails(attemptId);
+      expect(details.attempt.status).toBe('LOCKED');
+      expect(details.attempt.tabSwitchCount).toBe(3);
+
+      // Verify proctor events timeline has at least 3 qualifying violation events for this attempt
+      const attemptEvents = details.events.filter((e) => e.eventType === 'TAB_SWITCH');
+      expect(attemptEvents.length).toBeGreaterThanOrEqual(3);
+    });
+
+    it('Points 6, 7, 8: reopen LOCKED attempt BEFORE expires_at succeeds, resuming same attemptId and preserving expires_at', async () => {
+      const paperId = 'p-reopen-before';
+      const now = new Date();
+      // Future expiry (30 mins from now)
+      const futureExpiresAt = new Date(now.getTime() + 1800000).toISOString();
+
+      const startRes = await createOrRecoverExamAttempt(studentId, paperId);
+      const attemptId = startRes.data!.attemptId;
+
+      const attemptObj = mockExamStore.attempts.get(attemptId)!;
+      attemptObj.expires_at = futureExpiresAt;
+
+      // Lock attempt
+      await proctorLockAttempt(attemptId, adminId, 'Lock before reopen');
+
+      // Reopen attempt BEFORE expires_at
+      const reopenRes = await proctorReopenAttempt(attemptId, adminId, 'Reopen before expiry');
+      expect(reopenRes.success).toBe(true);
+      expect(reopenRes.status).toBe('IN_PROGRESS');
+      expect(reopenRes.attemptId).toBe(attemptId);
+
+      // Verify same attempt is resumed and expires_at is UNCHANGED
+      const resumedAttempt = mockExamStore.attempts.get(attemptId)!;
+      expect(resumedAttempt.status).toBe('IN_PROGRESS');
+      expect(resumedAttempt.expires_at).toBe(futureExpiresAt);
+    });
+
+    it('Point 9: reopen AFTER expires_at is rejected with clear exact error message', async () => {
+      const paperId = 'p-reopen-after';
+      const now = new Date();
+      // Past expiry (10 mins in past)
+      const pastExpiresAt = new Date(now.getTime() - 600000).toISOString();
+
+      const startRes = await createOrRecoverExamAttempt(studentId, paperId);
+      const attemptId = startRes.data!.attemptId;
+
+      const attemptObj = mockExamStore.attempts.get(attemptId)!;
+      attemptObj.expires_at = pastExpiresAt;
+      attemptObj.status = 'LOCKED';
+
+      // Reopen attempt AFTER expires_at
+      await expect(
+        proctorReopenAttempt(attemptId, adminId, 'Reopen after expiry')
+      ).rejects.toThrow('Attempt cannot be reopened because the exam duration has expired.');
+    });
+
+    it('Point 10: two simultaneous access requests return the exact same attemptId', async () => {
+      const paperId = 'p-simul-access';
+      mockExamStore.papers.set(paperId, {
+        id: paperId,
+        title: 'Simultaneous Paper',
+        access_code: 'SIMUL100',
+        status: 'PUBLISHED',
+        duration_minutes: 60,
+        total_marks: 10,
+        required_question_count: 1,
+        created_by: adminId,
+        published_at: new Date().toISOString(),
+      });
+      mockExamStore.paperQuestions.set(paperId, ['q-simul-1']);
+
+      const [res1, res2] = await Promise.all([
+        createOrRecoverExamAttempt(studentId, paperId),
+        createOrRecoverExamAttempt(studentId, paperId),
+      ]);
+
+      expect(res1.success).toBe(true);
+      expect(res2.success).toBe(true);
+      expect(res1.data?.attemptId).toBe(res2.data?.attemptId);
+    });
+
+    it('Point 11: Student and Proctor show identical attempt state', async () => {
+      const paperId = 'p-identical';
+      mockExamStore.papers.set(paperId, {
+        id: paperId,
+        title: 'Identical State Paper',
+        access_code: 'IDENT100',
+        status: 'PUBLISHED',
+        duration_minutes: 60,
+        total_marks: 10,
+        required_question_count: 1,
+        created_by: adminId,
+        published_at: new Date().toISOString(),
+      });
+      mockExamStore.paperQuestions.set(paperId, ['q-ident-1']);
+
+      const startRes = await createOrRecoverExamAttempt(studentId, paperId);
+      const attemptId = startRes.data!.attemptId;
+
+      // Student state
+      const studentState = await getExamState(studentId, attemptId);
+      // Proctor state
+      const proctorDetails = await getProctorAttemptDetails(attemptId);
+
+      expect(studentState.data?.attempt.id).toBe(attemptId);
+      expect(proctorDetails.attempt.id).toBe(attemptId);
+      expect(studentState.data?.attempt.status).toBe(proctorDetails.attempt.status);
+      expect(studentState.data?.attempt.last_question_index).toBe(proctorDetails.attempt.lastQuestionIndex);
+    });
+  });
+});
