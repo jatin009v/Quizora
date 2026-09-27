@@ -183,4 +183,29 @@ describe('Quizora Step 8 — Student Identity System & Roll Number Cleanup Suite
     expect(created?.status).toBe('ACTIVE');
     expect(created?.year).toBe('1st Year');
   });
+
+  it('13. listUsersForAdmin returns database-authoritative total count when paginated', async () => {
+    const { listUsersForAdmin } = await import('../lib/auth/userService');
+    // Seed 30 student accounts
+    for (let i = 1; i <= 30; i++) {
+      mockUserProfiles.set(`usr-student-test-${i}`, {
+        id: `usr-student-test-${i}`,
+        auth_user_id: `auth-user-${i}`,
+        name: `Student ${i}`,
+        course: i <= 15 ? 'BCA' : 'MCA',
+        year: '1st Year',
+        username: `student_${i}`,
+        role: 'STUDENT',
+        status: 'ACTIVE',
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      });
+    }
+
+    // Call listUsersForAdmin with default limit=25
+    const res = await listUsersForAdmin({ tab: 'PARTICIPANTS', limit: 25 });
+    expect(res.success).toBe(true);
+    expect(res.users).toHaveLength(25); // Paginated slice length
+    expect(res.total).toBe(31); // Total student profiles count in database!
+  });
 });

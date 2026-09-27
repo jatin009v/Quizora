@@ -39,7 +39,7 @@ export default function AdminDashboardPage() {
         ]);
 
         setStats({
-          totalUsers: usersRes.users?.length || 0,
+          totalUsers: typeof usersRes.total === 'number' ? usersRes.total : (usersRes.users?.length || 0),
           totalPapers: papersRes.papers?.length || 0,
           totalQuestions: questionsRes.questions?.length || 0,
           totalAttempts: 12, // Demo baseline metric
