@@ -179,19 +179,14 @@ export async function logProctorEvent(
       ? (attempt.fullscreen_exit_count || 0) + 1
       : attempt.fullscreen_exit_count || 0;
 
-  // Check 3-Violation Policy
-  const shouldLock = updatedCount >= 3;
-  const newStatus: AttemptStatus = shouldLock ? 'LOCKED' : attempt.status;
+  // Integrity Monitoring Only — DO NOT automatically lock student attempt
+  const shouldLock = false;
+  const newStatus: AttemptStatus = attempt.status;
 
   // Update in memory or DB
   attempt.tab_switch_count = updatedCount;
   attempt.fullscreen_exit_count = fullscreenExitCount;
-  attempt.status = newStatus;
   attempt.updated_at = nowIso;
-
-  if (shouldLock) {
-    attempt.locked_at = nowIso;
-  }
 
   if (isTestOrLocal()) {
     mockExamStore.attempts.set(attempt.id, { ...attempt });
@@ -201,41 +196,14 @@ export async function logProctorEvent(
       fullscreen_exit_count: fullscreenExitCount,
       updated_at: nowIso,
     };
-    if (shouldLock) {
-      updatePayload.status = 'LOCKED';
-      updatePayload.locked_at = nowIso;
-    }
     await adminClient.from('exam_attempts').update(updatePayload).eq('id', attempt.id);
   }
 
-  // If locked, insert EXAM_LOCKED proctor event
-  if (shouldLock) {
-    const lockEventRecord = {
-      id: crypto.randomUUID(),
-      attempt_id: attempt.id,
-      user_id: attempt.user_id,
-      paper_id: attempt.paper_id,
-      event_type: 'EXAM_LOCKED',
-      question_index: input.questionIndex,
-      metadata: { reason: '3-violation lockout threshold reached' },
-      event_time: nowIso,
-      created_at: nowIso,
-    };
-
-    if (isTestOrLocal()) {
-      mockProctorEvents.push(lockEventRecord);
-    } else {
-      await adminClient.from('proctor_events').insert(lockEventRecord);
-    }
-  }
-
   let warningMessage: string | undefined;
-  if (shouldLock) {
-    warningMessage = 'Your examination has been temporarily locked. Please contact the exam proctor.';
-  } else if (updatedCount === 1) {
+  if (updatedCount === 1) {
     warningMessage = 'Exam integrity warning: 1 integrity event detected. Please remain in the examination window and keep fullscreen mode enabled.';
-  } else if (updatedCount === 2) {
-    warningMessage = 'Exam integrity warning — 2 events recorded. Next violation will lock your examination!';
+  } else if (updatedCount >= 2) {
+    warningMessage = `Exam integrity warning — ${updatedCount} events recorded. Actions are monitored by proctors.`;
   }
 
   return {
@@ -243,7 +211,7 @@ export async function logProctorEvent(
     attemptId: attempt.id,
     eventType: input.eventType,
     tabSwitchCount: updatedCount,
-    isLocked: shouldLock,
+    isLocked: false,
     status: newStatus,
     warningMessage,
   };
@@ -297,8 +265,8 @@ export async function getProctorDashboardSummary(paperId?: string) {
       event_time,
       question_index,
       attempt_id,
-      profiles!inner ( name, username, course ),
-      papers!inner ( title )
+      profiles ( name, username, course ),
+      papers ( title )
     `)
     .order('event_time', { ascending: false })
     .limit(15);
@@ -382,8 +350,8 @@ export async function listStudentAttempts(filters: Partial<ProctorAttemptFilter>
       fullscreen_exit_count,
       last_question_index,
       created_at,
-      profiles!inner ( id, name, username, year, course ),
-      papers!inner ( id, title, duration_minutes )
+      profiles ( id, name, username, year, course ),
+      papers ( id, title, duration_minutes )
     `)
     .order('updated_at', { ascending: false });
 

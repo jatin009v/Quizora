@@ -41,6 +41,7 @@ export type CreatePaperInput = z.input<typeof CreatePaperSchema>;
 
 export const SubmitExamSchema = z.object({
   attemptId: z.string().uuid({ message: 'Invalid attempt ID format' }),
+  unconfirmedAnswers: z.record(z.string(), z.string()).optional(),
 });
 
 export type SubmitExamInput = z.infer<typeof SubmitExamSchema>;

@@ -122,12 +122,11 @@ describe('Step 7 — Production Release Candidate & Critical Reopen Verification
     // Fast-forward cooldown in mock store for 3rd violation
     mockProctorEvents[1].event_time = new Date(Date.now() - 3000).toISOString();
     const ev3 = await logProctorEvent({ attemptId: originalAttemptId, eventType: 'TAB_SWITCH', questionIndex: 1 }, studentId);
-    expect(ev3.isLocked).toBe(true);
-    expect(ev3.status).toBe('LOCKED');
+    expect(ev3.tabSwitchCount).toBe(3);
 
-    // F. Verify attempt is LOCKED and answer modifications are rejected
-    const lockedAttempt = mockExamStore.attempts.get(originalAttemptId)!;
-    expect(lockedAttempt.status).toBe('LOCKED');
+    // Proctor manually locks attempt
+    const lockRes = await proctorLockAttempt(originalAttemptId, proctorId, 'Proctor manual lock');
+    expect(lockRes.status).toBe('LOCKED');
 
     const blockedAnsRes = await saveExamAnswer(studentId, {
       attemptId: originalAttemptId,

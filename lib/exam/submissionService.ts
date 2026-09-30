@@ -16,9 +16,20 @@ export interface SubmissionResult {
   };
 }
 
+function normalizeOption(opt: string | null | undefined): string {
+  if (!opt) return '';
+  const v = opt.trim().toUpperCase();
+  if (v === 'OPTION_A' || v === 'A') return 'A';
+  if (v === 'OPTION_B' || v === 'B') return 'B';
+  if (v === 'OPTION_C' || v === 'C') return 'C';
+  if (v === 'OPTION_D' || v === 'D') return 'D';
+  return v;
+}
+
 export async function submitExamAttempt(
   userId: string,
-  attemptId: string
+  attemptId: string,
+  unconfirmedAnswers?: Record<string, string>
 ): Promise<SubmissionResult> {
   const nowIso = new Date().toISOString();
   const supabase = createAdminClient();
@@ -28,6 +39,38 @@ export async function submitExamAttempt(
     let rawAnswers: Answer[] = [];
     let paperQuestions: (PaperQuestion & { questions: Question })[] = [];
     let totalPaperMarks = 50;
+
+    // Server-Side Reconciliation: Upsert any unconfirmed client answers before reading for grading
+    if (unconfirmedAnswers && Object.keys(unconfirmedAnswers).length > 0) {
+      for (const [qId, opt] of Object.entries(unconfirmedAnswers)) {
+        if (!opt) continue;
+        if (process.env.NODE_ENV === 'test' || !process.env.NEXT_PUBLIC_SUPABASE_URL?.includes('supabase.co')) {
+          const key = `${attemptId}:${qId}`;
+          if (!mockExamStore.answers.has(key)) {
+            mockExamStore.answers.set(key, {
+              id: `ans-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+              attempt_id: attemptId,
+              question_id: qId,
+              selected_option: opt,
+              is_correct: null,
+              marks_awarded: null,
+              answered_at: nowIso,
+              updated_at: nowIso,
+            });
+          }
+        } else {
+          await supabase.from('answers').upsert(
+            {
+              attempt_id: attemptId,
+              question_id: qId,
+              selected_option: opt,
+              updated_at: nowIso,
+            },
+            { onConflict: 'attempt_id,question_id' }
+          );
+        }
+      }
+    }
 
     // Isolated test / fallback handling
     if (process.env.NODE_ENV === 'test' || !process.env.NEXT_PUBLIC_SUPABASE_URL?.includes('supabase.co')) {
@@ -42,7 +85,7 @@ export async function submitExamAttempt(
           paper_id: attempt!.paper_id,
           question_id: qId,
           question_order: idx + 1,
-          marks: 1,
+          marks: (mockExamStore.questions.get(qId)?.marks) || 1,
           created_at: nowIso,
           questions: mockExamStore.questions.get(qId),
         }));
@@ -102,11 +145,8 @@ export async function submitExamAttempt(
       };
     }
 
-    // Expiry Check: If locked or in progress, check if exam timer expired
-    const isExpired = attempt.expires_at ? new Date(attempt.expires_at).getTime() <= Date.now() : false;
-
-    // Status check: Must be IN_PROGRESS, or LOCKED if timer expired
-    if (attempt.status !== 'IN_PROGRESS' && !(attempt.status === 'LOCKED' && isExpired)) {
+    // Status check: Allow IN_PROGRESS and LOCKED attempts to finalize safely
+    if (attempt.status !== 'IN_PROGRESS' && attempt.status !== 'LOCKED') {
       return {
         success: false,
         error: `Cannot submit attempt: status is ${attempt.status.toLowerCase()}`,
@@ -117,25 +157,33 @@ export async function submitExamAttempt(
     // 1. Calculate Score Server-Side
     let totalScore = 0;
     const answerMap = new Map<string, Answer>();
-    rawAnswers.forEach((a) => answerMap.set(a.question_id, a));
+    rawAnswers.forEach((a) => {
+      answerMap.set(a.question_id, a);
+      if (a.id) answerMap.set(a.id, a);
+    });
 
     const perQuestionMark = paperQuestions.length > 0 ? totalPaperMarks / paperQuestions.length : 1;
 
     paperQuestions.forEach((pq: any) => {
-      const qId = pq.id || pq.question_id;
+      const qId = pq.question_id || pq.id;
       const correctOption = pq.correct_option || pq.questions?.correct_option;
       if (!correctOption) return;
 
-      const studentAns = answerMap.get(qId) || (pq.question_id ? answerMap.get(pq.question_id) : undefined);
-      const questionMark = perQuestionMark;
+      const studentAns = answerMap.get(qId) || (pq.id ? answerMap.get(pq.id) : undefined);
+      const questionMark = (totalPaperMarks && paperQuestions.length > 0)
+        ? (totalPaperMarks / paperQuestions.length)
+        : (pq.questions?.marks || pq.marks || 1);
 
-      if (studentAns && studentAns.selected_option === correctOption) {
-        totalScore += Number(questionMark);
-        studentAns.is_correct = true;
-        studentAns.marks_awarded = questionMark;
-      } else if (studentAns) {
-        studentAns.is_correct = false;
-        studentAns.marks_awarded = 0;
+      if (studentAns) {
+        const isMatch = normalizeOption(studentAns.selected_option) === normalizeOption(correctOption);
+        if (isMatch) {
+          totalScore += Number(questionMark);
+          studentAns.is_correct = true;
+          studentAns.marks_awarded = questionMark;
+        } else {
+          studentAns.is_correct = false;
+          studentAns.marks_awarded = 0;
+        }
       }
     });
 

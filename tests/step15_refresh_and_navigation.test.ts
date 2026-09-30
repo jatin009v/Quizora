@@ -119,12 +119,12 @@ describe('Quizora Step 15 — Refresh Recovery, Navigation & Unload Integrity Ve
     att1.tab_switch_count = 2;
     mockExamStore.attempts.set(attemptId, att1);
 
-    const lockRes = await logProctorEvent({ attemptId, eventType: 'TAB_SWITCH', questionIndex: 0 }, studentId);
+    const evRes = await logProctorEvent({ attemptId, eventType: 'TAB_SWITCH', questionIndex: 0 }, studentId);
 
-    expect(lockRes.isLocked).toBe(true);
-    expect(lockRes.status).toBe('LOCKED');
+    expect(evRes.tabSwitchCount).toBe(3);
+    expect(evRes.isLocked).toBe(false);
 
     const state = await getExamState(studentId, attemptId);
-    expect(state.data?.attempt.status).toBe('LOCKED');
+    expect(state.data?.attempt.status).toBe('IN_PROGRESS');
   });
 });

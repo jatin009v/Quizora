@@ -145,19 +145,21 @@ export function ExamInterface({
     setSubmitError(null);
 
     try {
-      // Step A: Ensure all pending writes are flushed first
-      const isFlushed = await answerQueueEngine.flushPendingAnswers();
-      if (!isFlushed || answerQueueEngine.hasPendingWrites()) {
-        setSubmitError('Some answers are still syncing. Please wait for connection.');
-        setIsSubmitting(false);
-        return;
+      // Step A: Attempt to flush pending queue in background
+      try {
+        await answerQueueEngine.flushPendingAnswers();
+      } catch {
+        // Continue to submission reconciliation even if queue flush timed out
       }
 
-      // Step B: Send official submit request to server
+      // Step B: Send official submit request with client answers dictionary for server-side reconciliation
       const res = await fetch('/api/exam/submit', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ attemptId: attempt.id }),
+        body: JSON.stringify({
+          attemptId: attempt.id,
+          unconfirmedAnswers: answers,
+        }),
       });
 
       const json = await res.json();
@@ -180,7 +182,7 @@ export function ExamInterface({
     } finally {
       setIsSubmitting(false);
     }
-  }, [attempt.id]);
+  }, [attempt.id, answers]);
 
   // 3. Timer Countdown & Automatic Server Submission on Expiry
   useEffect(() => {

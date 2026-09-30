@@ -114,8 +114,8 @@ describe('Step 5 - Browser Integrity Monitoring, Server-Authoritative 3-Violatio
     expect(ev2.warningMessage).toContain('2 events recorded');
   });
 
-  // 8. Third qualifying violation locks attempt
-  it('8. Should lock attempt on 3rd qualifying violation', async () => {
+  // 8. Third qualifying violation records count and warning without automatic lockout (Monitoring-only)
+  it('8. Should record 3rd qualifying violation without automatic lockout (monitoring-only)', async () => {
     const attempt = mockExamStore.attempts.get(attemptId)!;
     attempt.tab_switch_count = 2;
     mockExamStore.attempts.set(attemptId, attempt);
@@ -130,12 +130,12 @@ describe('Step 5 - Browser Integrity Monitoring, Server-Authoritative 3-Violatio
 
     const ev3 = await logProctorEvent({ attemptId, eventType: 'TAB_SWITCH', questionIndex: 5 }, studentProfileId);
     expect(ev3.tabSwitchCount).toBe(3);
-    expect(ev3.isLocked).toBe(true);
-    expect(ev3.status).toBe('LOCKED');
-    expect(ev3.warningMessage).toContain('temporarily locked');
+    expect(ev3.isLocked).toBe(false);
+    expect(ev3.status).toBe('IN_PROGRESS');
+    expect(ev3.warningMessage).toContain('3 events recorded');
 
     const updated = mockExamStore.attempts.get(attemptId);
-    expect(updated?.status).toBe('LOCKED');
+    expect(updated?.status).toBe('IN_PROGRESS');
   });
 
   // 10. Locked attempt cannot save answers

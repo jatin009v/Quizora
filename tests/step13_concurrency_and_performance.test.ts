@@ -350,14 +350,17 @@ describe('Quizora Step 13 — Emergency Production Concurrency, Performance & Co
       );
       mockProctorEvents[1].event_time = new Date(now.getTime() - 5000).toISOString();
 
-      // Event 3 (Triggers LOCK)
-      const lockRes = await logProctorEvent(
+      // Event 3 (Monitoring Only)
+      const ev3Res = await logProctorEvent(
         { attemptId, eventType: 'TAB_SWITCH', questionIndex: 0 },
         studentId
       );
 
-      expect(lockRes.isLocked).toBe(true);
-      expect(lockRes.status).toBe('LOCKED');
+      expect(ev3Res.tabSwitchCount).toBe(3);
+      expect(ev3Res.isLocked).toBe(false);
+
+      // Proctor manually locks attempt to test manual proctor lock visibility
+      await proctorLockAttempt(attemptId, adminId, 'Proctor manual lock');
 
       // Verify proctor attempt details timeline displays integrity events belonging to this attemptId
       const details = await getProctorAttemptDetails(attemptId);

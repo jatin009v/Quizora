@@ -23,7 +23,11 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const result = await submitExamAttempt(auth.profile.id, validation.data.attemptId);
+    const result = await submitExamAttempt(
+      auth.profile.id,
+      validation.data.attemptId,
+      validation.data.unconfirmedAnswers
+    );
 
     if (!result.success) {
       let status = 400;

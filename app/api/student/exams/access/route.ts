@@ -49,24 +49,31 @@ export async function POST(req: NextRequest) {
       );
     } else {
       const supabase = createAdminClient();
-      const { data: foundPaper, error: paperErr } = await supabase
+      const { data: foundPapers, error: paperErr } = await supabase
         .from('papers')
         .select('*')
         .eq('status', 'PUBLISHED')
         .ilike('access_code', normalizedCode)
-        .maybeSingle();
+        .order('published_at', { ascending: false })
+        .limit(1);
 
-      if (paperErr || !foundPaper) {
-        return NextResponse.json(
-          { success: false, error: 'Invalid or unavailable examination access code.' },
-          { status: 400, headers: { 'QUIZORA-REQUEST-ID': requestId } }
-        );
+      if (!paperErr && foundPapers && foundPapers.length > 0) {
+        paper = foundPapers[0];
       }
-      paper = foundPaper;
     }
     const dbMs = Date.now() - dbStart;
 
     if (!paper) {
+      console.warn('[EXAM_ACCESS_INVALID_CODE]', {
+        requestId,
+        username: auth.profile.username,
+        userId: auth.profile.id,
+        code: normalizedCode,
+        status: 400,
+        dbMs,
+        totalMs: Date.now() - startTime,
+      });
+
       return NextResponse.json(
         { success: false, error: 'Invalid or unavailable examination access code.' },
         { status: 400, headers: { 'QUIZORA-REQUEST-ID': requestId } }
