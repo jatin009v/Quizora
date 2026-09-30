@@ -161,13 +161,13 @@ export default function ProctorDashboardPage() {
 
         <div className="bg-white p-6 rounded-2xl border-4 border-brand-black shadow-editorial space-y-2">
           <div className="flex items-center justify-between text-burnt-orange">
-            <span className="font-mono text-xs font-bold uppercase">Locked Attempts</span>
-            <Lock className="w-5 h-5 text-burnt-orange" />
+            <span className="font-mono text-xs font-bold uppercase">Total Integrity Signals</span>
+            <ShieldAlert className="w-5 h-5 text-burnt-orange" />
           </div>
           <div className="font-display font-black text-3xl md:text-4xl text-burnt-orange">
-            {summary.lockedCount}
+            {summary.warningCount}
           </div>
-          <p className="text-xs font-mono text-slate-500">Requires Proctor reopen</p>
+          <p className="text-xs font-mono text-slate-500">Recorded activity signals</p>
         </div>
 
         <div className="bg-white p-6 rounded-2xl border-4 border-brand-black shadow-editorial space-y-2">
@@ -199,7 +199,7 @@ export default function ProctorDashboardPage() {
 
           {/* STATUS FILTER TABS */}
           <div className="flex flex-wrap items-center gap-1.5 bg-warm-beige p-1.5 rounded-xl border-2 border-brand-black">
-            {['ALL', 'NORMAL', 'WARNING', 'LOCKED', 'SUBMITTED'].map((status) => (
+            {['ALL', 'NORMAL', 'WARNING', 'SUBMITTED'].map((status) => (
               <button
                 key={status}
                 onClick={() => setStatusFilter(status)}

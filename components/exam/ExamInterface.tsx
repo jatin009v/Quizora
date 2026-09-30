@@ -414,39 +414,8 @@ export function ExamInterface({
 
   return (
     <div className="relative w-full max-w-6xl mx-auto bg-canvas rounded-2xl border-4 border-brand-black shadow-editorial-lg overflow-hidden my-8">
-      {/* 1. EXAM LOCKED OVERLAY */}
-      {isLocked && (
-        <div className="absolute inset-0 z-50 bg-brand-black/95 backdrop-blur-md flex items-center justify-center p-6 text-center text-white">
-          <div className="bg-slate-900 p-8 md:p-12 rounded-2xl border-4 border-burnt-orange shadow-editorial-pink max-w-lg space-y-6">
-            <div className="w-16 h-16 bg-burnt-orange/20 border-2 border-burnt-orange rounded-full flex items-center justify-center mx-auto text-burnt-orange">
-              <Lock className="w-8 h-8" />
-            </div>
-            <div className="space-y-2">
-              <span className="bg-burnt-orange text-white px-3 py-1 rounded font-mono text-xs font-bold uppercase tracking-wider">
-                EXAM LOCKED
-              </span>
-              <h2 className="font-display font-black text-2xl md:text-4xl uppercase text-warm-beige">
-                Attempt Temporarily Locked
-              </h2>
-            </div>
-            <p className="text-slate-300 font-sans text-sm leading-relaxed">
-              Your examination has been temporarily locked because multiple exam-integrity events were detected.
-              Please contact the exam proctor to review and reopen your attempt.
-            </p>
-            <div className="bg-slate-800 p-4 rounded-xl border border-slate-700 text-xs font-mono text-slate-400 space-y-1">
-              <div>Attempt ID: <span className="text-burnt-orange font-bold">{attempt.id}</span></div>
-              <div>Events Recorded: <span className="text-vibrant-pink font-bold">{tabSwitchCount} Events</span></div>
-              <div>Saved Answers Status: <span className="text-emerald-400 font-bold">Safely Preserved ✓</span></div>
-            </div>
-            <p className="text-xs text-slate-400 font-mono italic animate-pulse">
-              Syncing with Proctor Dashboard... When reopened, your exam will resume automatically.
-            </p>
-          </div>
-        </div>
-      )}
-
-      {/* 2. FULLSCREEN EXIT OVERLAY */}
-      {!isFullscreen && !isLocked && (
+      {/* FULLSCREEN EXIT OVERLAY */}
+      {!isFullscreen && (
         <div className="absolute inset-0 z-40 bg-brand-black/90 backdrop-blur-sm flex items-center justify-center p-6 text-center text-white">
           <div className="bg-slate-900 p-8 rounded-2xl border-4 border-vibrant-pink shadow-editorial max-w-md space-y-6">
             <div className="w-14 h-14 bg-vibrant-pink/20 border-2 border-vibrant-pink rounded-full flex items-center justify-center mx-auto text-vibrant-pink">
@@ -454,14 +423,14 @@ export function ExamInterface({
             </div>
             <div className="space-y-2">
               <span className="bg-vibrant-pink text-white px-3 py-1 rounded font-mono text-xs font-bold uppercase tracking-wider">
-                FULLSCREEN REQUIRED
+                FULLSCREEN RECOMMENDED
               </span>
               <h3 className="font-display font-black text-2xl uppercase text-warm-beige">
                 Exam Content Obscured
               </h3>
             </div>
             <p className="text-slate-300 font-sans text-xs leading-relaxed">
-              Please return to fullscreen mode to continue your examination. Content is obscured until fullscreen mode is restored.
+              Please return to fullscreen mode to continue your examination cleanly.
             </p>
             <MagneticButton
               variant="primary"

@@ -309,6 +309,25 @@ export async function getExamState(
     if (!attempt) return { success: false, error: 'Attempt not found' };
     if (attempt.user_id !== userId) return { success: false, error: 'Unauthorized attempt access' };
 
+    // Auto-heal historical LOCKED attempts
+    if (attempt.status === 'LOCKED') {
+      const isExpired = attempt.expires_at ? new Date(attempt.expires_at).getTime() <= Date.now() : false;
+      if (isExpired) {
+        await submitExamAttempt(userId, attemptId);
+        attempt.status = 'SUBMITTED';
+        attempt.submitted_at = new Date().toISOString();
+      } else {
+        attempt.status = 'IN_PROGRESS';
+        attempt.locked_at = null;
+        if (!(process.env.NODE_ENV === 'test' || !process.env.NEXT_PUBLIC_SUPABASE_URL?.includes('supabase.co'))) {
+          await supabase
+            .from('exam_attempts')
+            .update({ status: 'IN_PROGRESS', locked_at: null, updated_at: new Date().toISOString() })
+            .eq('id', attemptId);
+        }
+      }
+    }
+
     // SERVER-AUTHORITATIVE EXPIRE CHECK & AUTO-SUBMIT
     if (
       attempt.status !== 'SUBMITTED' &&

@@ -236,6 +236,6 @@ describe('Quizora DCA Quiz Platform — Step 4 Publishing & Exam Execution Suite
 
     const res = await createOrRecoverExamAttempt(student1Id, paperId);
     expect(res.success).toBe(false);
-    expect(res.code).toBe('ATTEMPT_LOCKED');
+    expect(res.code).toBe('ATTEMPT_SUBMITTED');
   });
 });

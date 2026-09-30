@@ -103,24 +103,16 @@ describe('Quizora Step 14 — Final Real Exam Runner & Persistence Verification 
     await saveExamAnswer(studentId, { attemptId, questionId: 'q3', selectedOption: 'A' });
     await saveExamAnswer(studentId, { attemptId, questionId: 'q4', selectedOption: 'D' });
 
-    // 3. Trigger 3 integrity events to lock attempt
+    // 3. Trigger multiple integrity events (MUST NOT LOCK EXAM)
     await logProctorEvent({ attemptId, eventType: 'TAB_SWITCH', questionIndex: 0 }, studentId);
-    // Add artificial delay to avoid deduplication window
-    const att = mockExamStore.attempts.get(attemptId)!;
-    att.tab_switch_count = 3;
-    att.status = 'LOCKED';
-    mockExamStore.attempts.set(attemptId, att);
+    await logProctorEvent({ attemptId, eventType: 'WINDOW_BLUR', questionIndex: 1 }, studentId);
+    await logProctorEvent({ attemptId, eventType: 'FULLSCREEN_EXIT', questionIndex: 2 }, studentId);
 
-    // Verify locked state
-    const lockedState = await getExamState(studentId, attemptId);
-    expect(lockedState.data?.attempt.status).toBe('LOCKED');
+    // Verify state remains IN_PROGRESS
+    const activeState = await getExamState(studentId, attemptId);
+    expect(activeState.data?.attempt.status).toBe('IN_PROGRESS');
 
-    // 4. Proctor reopens attempt before expiry
-    const reopenRes = await proctorReopenAttempt(attemptId, adminId, 'Proctor authorized reopen');
-    expect(reopenRes.success).toBe(true);
-    expect(reopenRes.status).toBe('IN_PROGRESS');
-
-    // 5. Student resumes: Same attemptId, same expires_at, same answers recovered
+    // 4. Student resumes & continues: Same attemptId, same expires_at, same answers recovered
     const resumedState = await getExamState(studentId, attemptId);
     expect(resumedState.data?.attempt.id).toBe(attemptId);
     expect(resumedState.data?.attempt.status).toBe('IN_PROGRESS');
@@ -132,7 +124,7 @@ describe('Quizora Step 14 — Final Real Exam Runner & Persistence Verification 
       q4: 'D',
     });
 
-    // 6. Submit exam
+    // 5. Submit exam
     const submitRes = await submitExamAttempt(studentId, attemptId);
     expect(submitRes.success).toBe(true);
     expect(submitRes.data?.score).toBe(4);

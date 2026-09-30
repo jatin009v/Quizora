@@ -2,6 +2,7 @@ import { createAdminClient } from '@/lib/supabase/admin';
 import { Paper, ExamAttempt } from '@/types/database';
 import { normalizeAccessCode } from './accessCode';
 import { mockExamStore } from './service';
+import { submitExamAttempt } from './submissionService';
 
 export interface ValidateAccessCodeResult {
   success: boolean;
@@ -145,11 +146,14 @@ export async function validateAccessCodeServerSide(
         };
       }
       if (existingAttempt.status === 'LOCKED') {
-        return {
-          success: false,
-          error: 'This exam attempt has been locked by the proctor.',
-          code: 'ATTEMPT_LOCKED',
-        };
+        const isExpired = existingAttempt.expires_at ? new Date(existingAttempt.expires_at).getTime() <= nowMs : false;
+        if (isExpired) {
+          return {
+            success: false,
+            error: 'You have already submitted this exam.',
+            code: 'ATTEMPT_SUBMITTED',
+          };
+        }
       }
     }
 
@@ -254,13 +258,30 @@ export async function createOrRecoverExamAttempt(
       return { success: false, error: 'Exam paper not found', code: 'PAPER_NOT_FOUND' };
     }
 
-    // Recover existing IN_PROGRESS attempt (DO NOT RESHUFFLE OR TERMINATE)
+    // Recover existing attempt (DO NOT RESHUFFLE OR TERMINATE)
     if (existingAttempt) {
+      // Auto-heal historical LOCKED attempts
+      if (existingAttempt.status === 'LOCKED') {
+        const isExpired = existingAttempt.expires_at ? new Date(existingAttempt.expires_at).getTime() <= nowMs : false;
+        if (isExpired) {
+          await submitExamAttempt(userId, existingAttempt.id);
+          existingAttempt.status = 'SUBMITTED';
+          return { success: false, error: 'Exam attempt duration has expired', code: 'ATTEMPT_SUBMITTED' };
+        } else {
+          // Restore unexpired LOCKED attempt to IN_PROGRESS
+          existingAttempt.status = 'IN_PROGRESS';
+          existingAttempt.locked_at = null;
+          if (!(process.env.NODE_ENV === 'test' || !process.env.NEXT_PUBLIC_SUPABASE_URL?.includes('supabase.co'))) {
+            await supabase
+              .from('exam_attempts')
+              .update({ status: 'IN_PROGRESS', locked_at: null, updated_at: nowIso })
+              .eq('id', existingAttempt.id);
+          }
+        }
+      }
+
       if (existingAttempt.status === 'SUBMITTED') {
         return { success: false, error: 'Exam already submitted', code: 'ATTEMPT_SUBMITTED' };
-      }
-      if (existingAttempt.status === 'LOCKED') {
-        return { success: false, error: 'Exam attempt is locked', code: 'ATTEMPT_LOCKED' };
       }
 
       return {

@@ -186,43 +186,29 @@ export default function ProctorAttemptDetailPage({ params }: { params: { attempt
           </div>
         </div>
 
-        {/* STATUS & ACTIONS */}
+        {/* STATUS & SUMMARY */}
         <div className="bg-white p-6 rounded-2xl border-4 border-brand-black shadow-editorial space-y-4 flex flex-col justify-between">
           <div>
             <h3 className="font-display font-black text-xl uppercase border-b-2 border-brand-black pb-2 flex items-center justify-between">
               <span>Attempt Status</span>
-              <span className={`px-2.5 py-0.5 rounded text-xs font-mono font-bold ${attempt?.status === 'LOCKED' ? 'bg-burnt-orange text-white' : attempt?.status === 'SUBMITTED' ? 'bg-slate-200 text-slate-700' : 'bg-emerald-100 text-emerald-800'}`}>
+              <span className={`px-2.5 py-0.5 rounded text-xs font-mono font-bold ${attempt?.status === 'SUBMITTED' ? 'bg-slate-200 text-slate-700' : 'bg-emerald-100 text-emerald-800'}`}>
                 {attempt?.status}
               </span>
             </h3>
             <div className="mt-3 font-mono text-xs text-slate-600 space-y-1">
               <div>Started: {attempt?.startedAt ? new Date(attempt.startedAt).toLocaleTimeString() : 'N/A'}</div>
               <div>Expires: {attempt?.expiresAt ? new Date(attempt.expiresAt).toLocaleTimeString() : 'N/A'}</div>
+              {attempt?.submittedAt && (
+                <div className="text-emerald-700 font-bold">Submitted: {new Date(attempt.submittedAt).toLocaleTimeString()}</div>
+              )}
+              {attempt?.score !== null && attempt?.score !== undefined && (
+                <div className="text-vibrant-pink font-bold">Score: {attempt.score} / {attempt.totalMarks}</div>
+              )}
             </div>
           </div>
 
-          <div className="pt-4 border-t-2 border-brand-black flex items-center gap-3">
-            {attempt?.status === 'LOCKED' ? (
-              <button
-                onClick={handleReopenAttempt}
-                disabled={actionLoading}
-                className="w-full py-3 px-4 bg-emerald-600 text-white rounded-xl font-display font-black text-sm uppercase tracking-wider border-2 border-brand-black shadow-editorial hover:bg-emerald-700 flex items-center justify-center gap-2 cursor-pointer"
-              >
-                <Unlock className="w-4 h-4" />
-                {actionLoading ? 'Reopening Exam...' : 'Reopen Exam Attempt'}
-              </button>
-            ) : attempt?.status === 'IN_PROGRESS' ? (
-              <button
-                onClick={handleLockAttempt}
-                disabled={actionLoading}
-                className="w-full py-3 px-4 bg-burnt-orange text-white rounded-xl font-display font-black text-sm uppercase tracking-wider border-2 border-brand-black shadow-editorial hover:bg-burnt-orange-dark flex items-center justify-center gap-2 cursor-pointer"
-              >
-                <Lock className="w-4 h-4" />
-                {actionLoading ? 'Locking Attempt...' : 'Lock Attempt'}
-              </button>
-            ) : (
-              <span className="text-xs font-mono text-slate-500 italic">No further actions available for submitted attempt.</span>
-            )}
+          <div className="pt-4 border-t-2 border-brand-black font-mono text-xs text-slate-500 italic">
+            Monitoring-Only Mode Active. Student attempt is submittable and monitored live.
           </div>
         </div>
       </div>

@@ -165,24 +165,24 @@ describe('Quizora Step 13 — Emergency Production Concurrency, Performance & Co
       expect(proctorDetails1.attempt.lastQuestionIndex).toBe(1);
       expect(proctorDetails1.attempt.status).toBe('IN_PROGRESS');
 
-      // 3. Proctor locks attempt
-      await proctorLockAttempt(attemptId, adminId, 'Manual proctor lockout test');
+      // 3. Proctor logs activity event (MONITORING ONLY, NO LOCK)
+      await logProctorEvent(
+        {
+          attemptId,
+          eventType: 'TAB_SWITCH',
+          metadata: { questionIndex: 1, timestamp: Date.now() },
+        },
+        studentId
+      );
 
-      // Student state receives LOCKED
-      const studentStateLocked = await getExamState(studentId, attemptId);
-      expect(studentStateLocked.data?.attempt.status).toBe('LOCKED');
+      // Student state remains IN_PROGRESS
+      const studentStateActive = await getExamState(studentId, attemptId);
+      expect(studentStateActive.data?.attempt.status).toBe('IN_PROGRESS');
 
-      // Proctor state reflects LOCKED
-      const proctorDetailsLocked = await getProctorAttemptDetails(attemptId);
-      expect(proctorDetailsLocked.attempt.status).toBe('LOCKED');
-
-      // 4. Proctor reopens attempt
-      await proctorReopenAttempt(attemptId, adminId, 'Manual proctor reopen test');
-
-      // Student state receives IN_PROGRESS
-      const studentStateReopened = await getExamState(studentId, attemptId);
-      expect(studentStateReopened.data?.attempt.status).toBe('IN_PROGRESS');
-      expect(studentStateReopened.data?.lastQuestionIndex).toBe(1);
+      // Proctor state reflects IN_PROGRESS and logs activity event
+      const proctorDetailsActive = await getProctorAttemptDetails(attemptId);
+      expect(proctorDetailsActive.attempt.status).toBe('IN_PROGRESS');
+      expect(proctorDetailsActive.events.length).toBeGreaterThan(0);
     });
   });
 
