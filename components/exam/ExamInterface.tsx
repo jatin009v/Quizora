@@ -207,38 +207,7 @@ export function ExamInterface({
     return () => clearInterval(timer);
   }, [isLocked, attemptStatus, remainingTime, executeSubmission]);
 
-  // 4. Status Polling for Proctor Lock/Reopen Synchronization
-  useEffect(() => {
-    if (attemptStatus === 'SUBMITTED') return;
-
-    const interval = setInterval(async () => {
-      try {
-        const res = await fetch(`/api/exam/attempt/${attempt.id}`);
-        const json = await res.json();
-        if (res.ok && json.success && json.data?.attempt) {
-          const freshAttempt: ExamAttempt = json.data.attempt;
-          setAttempt(freshAttempt);
-          setAttemptStatus(freshAttempt.status);
-          setTabSwitchCount(freshAttempt.tab_switch_count);
-
-          // Update saved answers from server recovery if needed
-          if (json.data.savedAnswers) {
-            setAnswers((prev) => ({ ...json.data.savedAnswers, ...prev }));
-          }
-
-          // Update remaining time from server expires_at
-          if (freshAttempt.expires_at) {
-            const rem = Math.max(0, Math.floor((new Date(freshAttempt.expires_at).getTime() - Date.now()) / 1000));
-            setRemainingTime(rem);
-          }
-        }
-      } catch {
-        // Silent polling catch
-      }
-    }, 4000);
-
-    return () => clearInterval(interval);
-  }, [attempt.id, attemptStatus]);
+  // 4. Status Polling removed — Proctor monitoring is monitoring-only without locks. Student clients do not poll attempt state continuously.
 
   // 5. Browser Integrity Listeners (Fullscreen, Visibility, Focus/Blur)
   useEffect(() => {

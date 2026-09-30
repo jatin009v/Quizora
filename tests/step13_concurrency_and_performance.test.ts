@@ -169,8 +169,9 @@ describe('Quizora Step 13 — Emergency Production Concurrency, Performance & Co
       await logProctorEvent(
         {
           attemptId,
+          questionIndex: 1,
           eventType: 'TAB_SWITCH',
-          metadata: { questionIndex: 1, timestamp: Date.now() },
+          metadata: { timestamp: Date.now() },
         },
         studentId
       );
