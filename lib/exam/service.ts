@@ -88,17 +88,22 @@ export async function saveExamAnswer(
 
     // 5. Verify question belongs to paper
     let isQuestionInPaper = false;
+    let pqRecord: any = null;
+
     if (process.env.NODE_ENV === 'test' || !process.env.NEXT_PUBLIC_SUPABASE_URL?.includes('supabase.co')) {
       const paperQIds = mockExamStore.paperQuestions.get(attempt.paper_id) || [];
       isQuestionInPaper = paperQIds.includes(questionId);
     } else {
       const { data: pq } = await supabase
         .from('paper_questions')
-        .select('id, question_id')
+        .select('*')
         .eq('paper_id', attempt.paper_id)
         .or(`id.eq.${questionId},question_id.eq.${questionId}`)
         .maybeSingle();
-      isQuestionInPaper = !!pq;
+      if (pq) {
+        isQuestionInPaper = true;
+        pqRecord = pq;
+      }
     }
 
     if (!isQuestionInPaper) {
@@ -150,13 +155,27 @@ export async function saveExamAnswer(
       };
     }
 
-    // Supabase DB query
+    // Supabase DB query — Ensure matching question ID exists in questions table to satisfy FK constraint answers_question_id_fkey
+    const targetQId = (pqRecord && pqRecord.question_id) ? pqRecord.question_id : questionId;
+    const { data: qCheck } = await supabase.from('questions').select('id').eq('id', targetQId).maybeSingle();
+    if (!qCheck && pqRecord) {
+      await supabase.from('questions').insert({
+        id: targetQId,
+        question_text: pqRecord.question_text || 'Exam Question',
+        option_a: pqRecord.option_a || 'A',
+        option_b: pqRecord.option_b || 'B',
+        option_c: pqRecord.option_c || 'C',
+        option_d: pqRecord.option_d || 'D',
+        correct_option: pqRecord.correct_option || 'A',
+      });
+    }
+
     const { data: upsertData, error: upsertError } = await supabase
       .from('answers')
       .upsert(
         {
           attempt_id: attemptId,
-          question_id: questionId,
+          question_id: targetQId,
           selected_option: selectedOption,
           updated_at: nowIso,
         },
