@@ -25,7 +25,6 @@ const generateSampleQuestions = (): ClientQuestion[] => {
       id: `q-${i}`,
       question_text: `[DCA Q${i}] ${base.text}`,
       question_type: 'MCQ_SINGLE',
-      difficulty: i % 3 === 0 ? 'HARD' : i % 2 === 0 ? 'MEDIUM' : 'EASY',
       option_a: base.opts[0],
       option_b: base.opts[1],
       option_c: base.opts[2],

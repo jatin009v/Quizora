@@ -277,14 +277,28 @@ export function ExamInterface({
   const handleSelectOption = (option: 'A' | 'B' | 'C' | 'D') => {
     if (!currentQuestion || isLocked || attemptStatus === 'SUBMITTED') return;
 
+    const qType = (currentQuestion.question_type || 'SINGLE_CHOICE').toUpperCase();
+    let newAnswer: string = option;
+
+    if (qType === 'MULTIPLE_CHOICE' || qType === 'MCQ_MULTIPLE') {
+      const currentRaw = answers[currentQuestion.id] || '';
+      let currentList = currentRaw.split(',').map((s) => s.trim()).filter(Boolean);
+      if (currentList.includes(option)) {
+        currentList = currentList.filter((o) => o !== option);
+      } else {
+        currentList = [...currentList, option].sort();
+      }
+      newAnswer = currentList.join(',');
+    }
+
     // 1. Instant UI update
     setAnswers((prev) => ({
       ...prev,
-      [currentQuestion.id]: option,
+      [currentQuestion.id]: newAnswer,
     }));
 
     // 2. Dispatch to Persistence Queue Engine immediately
-    answerQueueEngine.enqueueAnswer(attempt.id, currentQuestion.id, option);
+    answerQueueEngine.enqueueAnswer(attempt.id, currentQuestion.id, newAnswer);
   };
 
   const handleNavigateQuestion = async (newIndex: number) => {
@@ -570,57 +584,88 @@ export function ExamInterface({
               </div>
             </div>
 
-            {/* QUESTION TEXT */}
-            <h3 className="text-xl md:text-2xl font-display font-bold text-brand-black leading-relaxed mb-4">
+            {/* QUESTION TEXT STATEMENT (MULTILINE SUPPORT) */}
+            <h3 className="text-xl md:text-2xl font-display font-bold text-brand-black leading-relaxed mb-4 whitespace-pre-wrap">
               {currentQuestion?.question_text}
             </h3>
 
             {/* CODE SNIPPET (IF ANY) */}
             {currentQuestion?.code_snippet && (
               <div className="bg-brand-black text-emerald-400 p-4 rounded-xl border-2 border-brand-black font-mono text-sm overflow-x-auto my-4 shadow-editorial">
-                <pre>{currentQuestion.code_snippet}</pre>
+                <pre className="whitespace-pre-wrap">{currentQuestion.code_snippet}</pre>
               </div>
             )}
 
             {/* OPTIONS (A, B, C, D) */}
-            <div className="space-y-3 mt-6">
-              {(['A', 'B', 'C', 'D'] as const).map((opt) => {
-                const optText =
-                  opt === 'A'
-                    ? currentQuestion?.option_a
-                    : opt === 'B'
-                    ? currentQuestion?.option_b
-                    : opt === 'C'
-                    ? currentQuestion?.option_c
-                    : currentQuestion?.option_d;
+            {(() => {
+              const qType = (currentQuestion?.question_type || 'SINGLE_CHOICE').toUpperCase();
+              const isMultiple = qType === 'MULTIPLE_CHOICE' || qType === 'MCQ_MULTIPLE';
+              const isTrueFalse = qType === 'TRUE_FALSE';
+              const optsList: ('A' | 'B' | 'C' | 'D')[] = isTrueFalse ? ['A', 'B'] : ['A', 'B', 'C', 'D'];
 
-                const isSelected = answers[currentQuestion?.id] === opt;
+              const selectedList = (answers[currentQuestion?.id] || '')
+                .split(',')
+                .map((s) => s.trim())
+                .filter(Boolean);
 
-                return (
-                  <button
-                    key={opt}
-                    disabled={isLocked}
-                    onClick={() => handleSelectOption(opt)}
-                    className={`w-full text-left p-4 rounded-xl border-3 transition-all flex items-start gap-4 cursor-pointer font-sans text-base font-semibold ${
-                      isSelected
-                        ? 'bg-burnt-orange text-white border-brand-black shadow-editorial-lg scale-[1.01]'
-                        : 'bg-white text-brand-black border-brand-black hover:bg-warm-beige hover:shadow-editorial'
-                    }`}
-                  >
-                    <span
-                      className={`w-8 h-8 rounded-lg flex items-center justify-center font-display font-black text-sm border-2 shrink-0 ${
-                        isSelected
-                          ? 'bg-white text-burnt-orange border-brand-black'
-                          : 'bg-warm-beige text-brand-black border-brand-black'
-                      }`}
-                    >
-                      {opt}
-                    </span>
-                    <span className="mt-0.5 leading-relaxed">{optText}</span>
-                  </button>
-                );
-              })}
-            </div>
+              return (
+                <div className="space-y-3 mt-6">
+                  {isMultiple && (
+                    <div className="text-xs font-mono font-bold text-vibrant-pink uppercase mb-2">
+                      ☑ MULTIPLE CHOICE — SELECT ALL THAT APPLY
+                    </div>
+                  )}
+
+                  {optsList.map((opt) => {
+                    let optText =
+                      opt === 'A'
+                        ? currentQuestion?.option_a
+                        : opt === 'B'
+                        ? currentQuestion?.option_b
+                        : opt === 'C'
+                        ? currentQuestion?.option_c
+                        : currentQuestion?.option_d;
+
+                    if (isTrueFalse) {
+                      if (opt === 'A' && (!optText || optText === '-')) optText = 'True';
+                      if (opt === 'B' && (!optText || optText === '-')) optText = 'False';
+                    }
+
+                    const isSelected = isMultiple
+                      ? selectedList.includes(opt)
+                      : answers[currentQuestion?.id] === opt;
+
+                    return (
+                      <button
+                        key={opt}
+                        disabled={isLocked}
+                        onClick={() => handleSelectOption(opt)}
+                        className={`w-full text-left p-4 rounded-xl border-3 transition-all flex items-start gap-4 cursor-pointer font-sans text-base font-semibold ${
+                          isSelected
+                            ? isMultiple
+                              ? 'bg-vibrant-pink text-white border-brand-black shadow-editorial-lg scale-[1.01]'
+                              : 'bg-burnt-orange text-white border-brand-black shadow-editorial-lg scale-[1.01]'
+                            : 'bg-white text-brand-black border-brand-black hover:bg-warm-beige hover:shadow-editorial'
+                        }`}
+                      >
+                        <span
+                          className={`w-8 h-8 rounded-lg flex items-center justify-center font-display font-black text-sm border-2 shrink-0 ${
+                            isSelected
+                              ? isMultiple
+                                ? 'bg-white text-vibrant-pink border-brand-black'
+                                : 'bg-white text-burnt-orange border-brand-black'
+                              : 'bg-warm-beige text-brand-black border-brand-black'
+                          }`}
+                        >
+                          {isMultiple ? (isSelected ? '✓' : '☐') : opt}
+                        </span>
+                        <span className="mt-0.5 leading-relaxed whitespace-pre-wrap">{optText}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              );
+            })()}
           </div>
 
           {/* BOTTOM CONTROLS */}

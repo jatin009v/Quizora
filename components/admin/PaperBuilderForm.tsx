@@ -550,7 +550,7 @@ export function PaperBuilderForm({
                         <div>
                           <div className="flex items-center gap-2 mb-1">
                             <span className="bg-warm-beige text-brand-black px-2 py-0.5 rounded text-[10px] font-mono font-bold uppercase border border-brand-black">
-                              {q.difficulty || 'MEDIUM'}
+                              {q.question_type || 'SINGLE_CHOICE'}
                             </span>
                             <span className="text-xs font-mono text-slate-500">{q.marks || 1} Mark(s)</span>
                           </div>

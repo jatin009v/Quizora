@@ -116,6 +116,7 @@ export async function publishPaperServerSide(
 
     // Validate every paper_question has text, options, and correct_option (supporting paper-centric snapshots & legacy links)
     for (const pq of paperQuestions) {
+      const qType = (pq.question_type || pq.questions?.question_type || 'MCQ_SINGLE').toUpperCase();
       const questionText = (pq.question_text || pq.questions?.question_text || '').trim();
       const optionA = (pq.option_a || pq.questions?.option_a || '').trim();
       const optionB = (pq.option_b || pq.questions?.option_b || '').trim();
@@ -123,11 +124,41 @@ export async function publishPaperServerSide(
       const optionD = (pq.option_d || pq.questions?.option_d || '').trim();
       const correctOpt = (pq.correct_option || pq.questions?.correct_option || '').toUpperCase().trim();
 
-      if (!questionText || !optionA || !optionB || !optionC || !optionD || !['A', 'B', 'C', 'D'].includes(correctOpt)) {
+      if (!questionText || !optionA || !optionB) {
         return {
           success: false,
           error: `One or more questions in this paper contain incomplete text or options (Question #${pq.question_order || 1}).`,
         };
+      }
+
+      if (qType === 'TRUE_FALSE') {
+        if (!['A', 'B', 'TRUE', 'FALSE'].includes(correctOpt)) {
+          return {
+            success: false,
+            error: `True/False question #${pq.question_order || 1} must have correct answer set to True or False.`,
+          };
+        }
+      } else if (qType === 'MULTIPLE_CHOICE' || qType === 'MCQ_MULTIPLE') {
+        if (!optionC || !optionD) {
+          return {
+            success: false,
+            error: `Multiple Choice question #${pq.question_order || 1} requires all 4 options.`,
+          };
+        }
+        const opts = correctOpt.split(',').map((s) => s.trim());
+        if (opts.length === 0 || !opts.every((o) => ['A', 'B', 'C', 'D'].includes(o))) {
+          return {
+            success: false,
+            error: `Multiple Choice question #${pq.question_order || 1} has invalid correct options (${correctOpt}).`,
+          };
+        }
+      } else {
+        if (!optionC || !optionD || !['A', 'B', 'C', 'D'].includes(correctOpt)) {
+          return {
+            success: false,
+            error: `One or more questions in this paper contain incomplete text or options (Question #${pq.question_order || 1}).`,
+          };
+        }
       }
     }
 

@@ -23,7 +23,39 @@ function normalizeOption(opt: string | null | undefined): string {
   if (v === 'OPTION_B' || v === 'B') return 'B';
   if (v === 'OPTION_C' || v === 'C') return 'C';
   if (v === 'OPTION_D' || v === 'D') return 'D';
+  if (v === 'TRUE' || v === 'TRUE_OPTION') return 'A';
+  if (v === 'FALSE' || v === 'FALSE_OPTION') return 'B';
   return v;
+}
+
+export function isAnswerCorrect(
+  questionType: string | undefined,
+  selectedOption: string | undefined | null,
+  correctOption: string | undefined | null
+): boolean {
+  if (!selectedOption || !correctOption) return false;
+
+  const qType = (questionType || 'MCQ_SINGLE').toUpperCase();
+
+  if (qType === 'MULTIPLE_CHOICE' || qType === 'MCQ_MULTIPLE') {
+    const parseSet = (raw: string): string[] => {
+      try {
+        if (raw.startsWith('[') && raw.endsWith(']')) {
+          const arr: string[] = JSON.parse(raw);
+          return arr.map(normalizeOption).filter(Boolean).sort();
+        }
+      } catch {}
+      return raw.split(',').map(normalizeOption).filter(Boolean).sort();
+    };
+
+    const studentSet = parseSet(selectedOption);
+    const correctSet = parseSet(correctOption);
+
+    if (studentSet.length !== correctSet.length || studentSet.length === 0) return false;
+    return studentSet.every((val, idx) => val === correctSet[idx]);
+  }
+
+  return normalizeOption(selectedOption) === normalizeOption(correctOption);
 }
 
 export async function submitExamAttempt(
@@ -175,7 +207,8 @@ export async function submitExamAttempt(
         : (pq.questions?.marks || pq.marks || 1);
 
       if (studentAns) {
-        const isMatch = normalizeOption(studentAns.selected_option) === normalizeOption(correctOption);
+        const qType = pq.question_type || pq.questions?.question_type || 'MCQ_SINGLE';
+        const isMatch = isAnswerCorrect(qType, studentAns.selected_option, correctOption);
         if (isMatch) {
           totalScore += Number(questionMark);
           studentAns.is_correct = true;

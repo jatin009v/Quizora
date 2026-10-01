@@ -47,7 +47,6 @@ export function QuestionSelectorModal({
     params.set('page', String(page));
     params.set('limit', '10');
     if (searchQuery.trim()) params.set('query', searchQuery.trim());
-    if (filterDifficulty !== 'ALL') params.set('difficulty', filterDifficulty);
 
     fetch(`/api/admin/questions?${params.toString()}`)
       .then((res) => res.json())
@@ -69,7 +68,7 @@ export function QuestionSelectorModal({
     return () => {
       isMounted = false;
     };
-  }, [isOpen, page, searchQuery, filterDifficulty]);
+  }, [isOpen, page, searchQuery]);
 
   if (!isOpen) return null;
 
@@ -146,9 +145,9 @@ export function QuestionSelectorModal({
             </div>
           )}
 
-          {/* SEARCH & FILTERS */}
+          {/* SEARCH BAR */}
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <div className="relative flex-1 min-w-[240px]">
+            <div className="relative flex-1">
               <Search className="w-4 h-4 absolute left-3 top-3 text-slate-400" />
               <input
                 type="text"
@@ -160,22 +159,6 @@ export function QuestionSelectorModal({
                 }}
                 className="w-full pl-9 pr-4 py-2 text-xs rounded-xl border-2 border-brand-black font-mono focus:outline-none focus:ring-2 focus:ring-burnt-orange"
               />
-            </div>
-
-            <div className="flex items-center gap-2">
-              <select
-                value={filterDifficulty}
-                onChange={(e) => {
-                  setFilterDifficulty(e.target.value);
-                  setPage(1);
-                }}
-                className="py-2 px-3 text-xs rounded-xl border-2 border-brand-black font-mono focus:outline-none cursor-pointer bg-white"
-              >
-                <option value="ALL">Difficulty: All</option>
-                <option value="EASY">Easy</option>
-                <option value="MEDIUM">Medium</option>
-                <option value="HARD">Hard</option>
-              </select>
             </div>
           </div>
         </div>
@@ -189,7 +172,7 @@ export function QuestionSelectorModal({
           ) : questions.length === 0 ? (
             <div className="text-center py-12 border-2 border-dashed border-slate-300 rounded-2xl">
               <HelpCircle className="w-12 h-12 text-slate-400 mx-auto mb-2" />
-              <p className="font-mono text-sm font-bold text-slate-600">No questions found matching filter criteria.</p>
+              <p className="font-mono text-sm font-bold text-slate-600">No questions found matching search query.</p>
             </div>
           ) : (
             questions.map((q) => {
@@ -214,10 +197,7 @@ export function QuestionSelectorModal({
 
                   <div className="flex-1">
                     <div className="flex items-center gap-2 mb-1">
-                      <span className="bg-brand-black text-white px-2 py-0.5 rounded text-[10px] font-mono font-bold uppercase">
-                        {q.difficulty}
-                      </span>
-                      <span className="text-xs font-mono text-slate-500">{q.marks} Mark(s)</span>
+                      <span className="text-xs font-mono font-bold text-slate-700">{q.marks} Mark(s)</span>
                     </div>
 
                     <p className="font-sans font-semibold text-sm text-brand-black leading-relaxed">

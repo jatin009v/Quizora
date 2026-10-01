@@ -115,7 +115,7 @@ export async function POST(req: NextRequest) {
     const body = await req.json();
     const {
       question_text,
-      question_type = 'MCQ_SINGLE',
+      question_type = 'SINGLE_CHOICE',
       difficulty = 'MEDIUM',
       option_a,
       option_b,
@@ -127,20 +127,59 @@ export async function POST(req: NextRequest) {
       marks = 1,
     } = body;
 
-    if (!question_text || !option_a || !option_b || !option_c || !option_d || !correct_option) {
-      return NextResponse.json(
-        { success: false, error: 'Question text, all 4 options, and correct option are required.' },
-        { status: 400 }
-      );
+    const qType = String(question_type).toUpperCase().trim();
+    const qText = String(question_text || '').trim();
+
+    if (!qText) {
+      return NextResponse.json({ success: false, error: 'Question text statement is required.' }, { status: 400 });
     }
 
-    const validOptions = ['A', 'B', 'C', 'D'];
-    const normalizedCorrect = String(correct_option).toUpperCase().trim();
-    if (!validOptions.includes(normalizedCorrect)) {
-      return NextResponse.json(
-        { success: false, error: 'Correct option must be A, B, C, or D.' },
-        { status: 400 }
-      );
+    let normOptA = String(option_a || '').trim();
+    let normOptB = String(option_b || '').trim();
+    let normOptC = String(option_c || '').trim();
+    let normOptD = String(option_d || '').trim();
+    let finalCorrect = '';
+    let finalType = qType;
+
+    if (qType === 'TRUE_FALSE') {
+      if (!normOptA) normOptA = 'True';
+      if (!normOptB) normOptB = 'False';
+      if (!normOptC) normOptC = '-';
+      if (!normOptD) normOptD = '-';
+      let corr = String(correct_option || '').toUpperCase().trim();
+      if (corr === 'TRUE') corr = 'A';
+      if (corr === 'FALSE') corr = 'B';
+      if (!['A', 'B'].includes(corr)) {
+        return NextResponse.json({ success: false, error: 'True/False question correct choice must be True or False.' }, { status: 400 });
+      }
+      finalCorrect = corr;
+      finalType = 'TRUE_FALSE';
+    } else if (qType === 'MULTIPLE_CHOICE' || qType === 'MCQ_MULTIPLE') {
+      if (!normOptA || !normOptB || !normOptC || !normOptD) {
+        return NextResponse.json({ success: false, error: 'All 4 options (A, B, C, and D) are required for Multiple Choice.' }, { status: 400 });
+      }
+      let corrList: string[] = [];
+      if (Array.isArray(correct_option)) {
+        corrList = correct_option.map((s: any) => String(s).toUpperCase().trim());
+      } else if (typeof correct_option === 'string') {
+        corrList = correct_option.split(',').map((s) => s.toUpperCase().trim()).filter(Boolean);
+      }
+      corrList = Array.from(new Set(corrList)).sort();
+      if (corrList.length === 0 || !corrList.every((o) => ['A', 'B', 'C', 'D'].includes(o))) {
+        return NextResponse.json({ success: false, error: 'Select one or more valid correct options (A, B, C, D) for Multiple Choice.' }, { status: 400 });
+      }
+      finalCorrect = corrList.join(',');
+      finalType = 'MULTIPLE_CHOICE';
+    } else {
+      if (!normOptA || !normOptB || !normOptC || !normOptD) {
+        return NextResponse.json({ success: false, error: 'All 4 options (A, B, C, and D) are required for Single Choice.' }, { status: 400 });
+      }
+      const corr = String(correct_option || '').toUpperCase().trim();
+      if (!['A', 'B', 'C', 'D'].includes(corr)) {
+        return NextResponse.json({ success: false, error: 'Correct option must be A, B, C, or D.' }, { status: 400 });
+      }
+      finalCorrect = corr;
+      finalType = qType === 'MCQ_SINGLE' ? 'MCQ_SINGLE' : 'SINGLE_CHOICE';
     }
 
     const nowIso = new Date().toISOString();
@@ -149,21 +188,21 @@ export async function POST(req: NextRequest) {
       const id = `q-${Date.now()}`;
       const newQ = {
         id,
-        question_text,
-        question_type,
+        question_text: qText,
+        question_type: finalType,
         difficulty,
-        option_a,
-        option_b,
-        option_c,
-        option_d,
-        correct_option: normalizedCorrect,
+        option_a: normOptA,
+        option_b: normOptB,
+        option_c: normOptC,
+        option_d: normOptD,
+        correct_option: finalCorrect,
         explanation: explanation || null,
         code_snippet: code_snippet || null,
         marks: Number(marks) || 1,
         created_at: nowIso,
         updated_at: nowIso,
       };
-      mockExamStore.questions.set(id, newQ);
+      mockExamStore.questions.set(id, newQ as any);
       return NextResponse.json({ success: true, question: newQ }, { status: 201 });
     }
 
@@ -171,14 +210,14 @@ export async function POST(req: NextRequest) {
     const { data: newQ, error } = await supabase
       .from('questions')
       .insert({
-        question_text,
-        question_type,
+        question_text: qText,
+        question_type: finalType,
         difficulty,
-        option_a,
-        option_b,
-        option_c,
-        option_d,
-        correct_option: normalizedCorrect,
+        option_a: normOptA,
+        option_b: normOptB,
+        option_c: normOptC,
+        option_d: normOptD,
+        correct_option: finalCorrect,
         explanation: explanation || null,
         code_snippet: code_snippet || null,
         marks: Number(marks) || 1,

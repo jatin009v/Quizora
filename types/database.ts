@@ -1,6 +1,11 @@
 export type UserRole = 'ADMIN' | 'PROCTOR' | 'STUDENT';
 export type UserStatus = 'ACTIVE' | 'DISABLED';
-export type QuestionType = 'MCQ_SINGLE' | 'MCQ_MULTIPLE';
+export type QuestionType =
+  | 'MCQ_SINGLE'
+  | 'SINGLE_CHOICE'
+  | 'MCQ_MULTIPLE'
+  | 'MULTIPLE_CHOICE'
+  | 'TRUE_FALSE';
 export type DifficultyLevel = 'EASY' | 'MEDIUM' | 'HARD';
 export type PaperStatus = 'DRAFT' | 'PUBLISHED' | 'ARCHIVED';
 export type MarkingMode = 'EQUAL_MARKS' | 'CUSTOM';
@@ -37,7 +42,7 @@ export interface Question {
   id: string;
   question_text: string;
   question_type: QuestionType;
-  difficulty: DifficultyLevel;
+  difficulty?: DifficultyLevel;
   option_a: string;
   option_b: string;
   option_c: string;

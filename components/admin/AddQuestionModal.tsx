@@ -2,7 +2,8 @@
 
 import React, { useState, useEffect } from 'react';
 import { MagneticButton } from '@/components/ui/MagneticButton';
-import { X, AlertCircle, CheckCircle2, HelpCircle } from 'lucide-react';
+import { X, AlertCircle, CheckSquare, CircleDot, Code } from 'lucide-react';
+import { QuestionType } from '@/types/database';
 
 interface AddQuestionModalProps {
   isOpen: boolean;
@@ -19,16 +20,23 @@ export function AddQuestionModal({
   initialQuestionData,
   onSaveSuccess,
 }: AddQuestionModalProps) {
+  const [questionType, setQuestionType] = useState<QuestionType>('SINGLE_CHOICE');
   const [questionText, setQuestionText] = useState('');
-  const [difficulty, setDifficulty] = useState<'EASY' | 'MEDIUM' | 'HARD'>('MEDIUM');
+  const [codeSnippet, setCodeSnippet] = useState('');
   const [marks, setMarks] = useState<number | ''>(1);
+
   const [optionA, setOptionA] = useState('');
   const [optionB, setOptionB] = useState('');
   const [optionC, setOptionC] = useState('');
   const [optionD, setOptionD] = useState('');
-  const [correctOption, setCorrectOption] = useState<'A' | 'B' | 'C' | 'D'>('A');
-  const [explanation, setExplanation] = useState('');
 
+  // Single choice / True-False correct option string ('A', 'B', 'C', 'D')
+  const [correctOption, setCorrectOption] = useState<string>('A');
+
+  // Multiple choice correct options array (e.g. ['A', 'C', 'D'])
+  const [correctOptionsMultiple, setCorrectOptionsMultiple] = useState<string[]>(['A']);
+
+  const [explanation, setExplanation] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
@@ -36,29 +44,71 @@ export function AddQuestionModal({
     if (isOpen) {
       if (initialQuestionData) {
         const q = initialQuestionData.questions || initialQuestionData;
+        const qType: QuestionType = (q.question_type || 'SINGLE_CHOICE') as QuestionType;
+        setQuestionType(qType);
         setQuestionText(q.question_text || '');
-        setDifficulty(q.difficulty || 'MEDIUM');
+        setCodeSnippet(q.code_snippet || '');
         setMarks(q.marks || 1);
         setOptionA(q.option_a || '');
         setOptionB(q.option_b || '');
         setOptionC(q.option_c || '');
         setOptionD(q.option_d || '');
-        setCorrectOption(q.correct_option || 'A');
         setExplanation(q.explanation || '');
+
+        const rawCorr = String(q.correct_option || 'A').toUpperCase().trim();
+        if (qType === 'MULTIPLE_CHOICE' || qType === 'MCQ_MULTIPLE') {
+          const list = rawCorr.split(',').map((s) => s.trim()).filter(Boolean);
+          setCorrectOptionsMultiple(list.length > 0 ? list : ['A']);
+          setCorrectOption(rawCorr);
+        } else {
+          setCorrectOption(rawCorr);
+        }
       } else {
+        setQuestionType('SINGLE_CHOICE');
         setQuestionText('');
-        setDifficulty('MEDIUM');
+        setCodeSnippet('');
         setMarks(1);
         setOptionA('');
         setOptionB('');
         setOptionC('');
         setOptionD('');
         setCorrectOption('A');
+        setCorrectOptionsMultiple(['A']);
         setExplanation('');
       }
       setErrorMsg(null);
     }
   }, [isOpen, initialQuestionData]);
+
+  // Handle Question Type Switching Defaults
+  const handleQuestionTypeChange = (type: QuestionType) => {
+    setQuestionType(type);
+    if (type === 'TRUE_FALSE') {
+      if (!optionA) setOptionA('True');
+      if (!optionB) setOptionB('False');
+      setOptionC('-');
+      setOptionD('-');
+      if (correctOption !== 'A' && correctOption !== 'B') {
+        setCorrectOption('A');
+      }
+    } else {
+      if (optionA === 'True') setOptionA('');
+      if (optionB === 'False') setOptionB('');
+      if (optionC === '-') setOptionC('');
+      if (optionD === '-') setOptionD('');
+    }
+  };
+
+  const toggleMultipleOption = (opt: 'A' | 'B' | 'C' | 'D') => {
+    setCorrectOptionsMultiple((prev) => {
+      if (prev.includes(opt)) {
+        if (prev.length === 1) return prev; // Keep at least one selected
+        return prev.filter((o) => o !== opt);
+      } else {
+        return [...prev, opt].sort();
+      }
+    });
+  };
 
   if (!isOpen) return null;
 
@@ -70,9 +120,19 @@ export function AddQuestionModal({
       setErrorMsg('Question statement text is required.');
       return;
     }
-    if (!optionA.trim() || !optionB.trim() || !optionC.trim() || !optionD.trim()) {
-      setErrorMsg('All 4 answer options (Option A, B, C, and D) are required.');
-      return;
+
+    if (questionType === 'TRUE_FALSE') {
+      const optA = optionA.trim() || 'True';
+      const optB = optionB.trim() || 'False';
+      if (!['A', 'B'].includes(correctOption)) {
+        setErrorMsg('Please select True or False as the correct option.');
+        return;
+      }
+    } else {
+      if (!optionA.trim() || !optionB.trim() || !optionC.trim() || !optionD.trim()) {
+        setErrorMsg('All 4 answer options (Option A, B, C, and D) are required.');
+        return;
+      }
     }
 
     setSubmitting(true);
@@ -85,18 +145,24 @@ export function AddQuestionModal({
         : `/api/admin/papers/${paperId}/questions`;
       const method = isEditing ? 'PUT' : 'POST';
 
+      let payloadCorrect = correctOption;
+      if (questionType === 'MULTIPLE_CHOICE' || questionType === 'MCQ_MULTIPLE') {
+        payloadCorrect = correctOptionsMultiple.sort().join(',');
+      }
+
       const res = await fetch(url, {
         method,
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           question_text: questionText.trim(),
-          difficulty,
+          question_type: questionType,
           marks: marks !== '' ? Number(marks) : 1,
-          option_a: optionA.trim(),
-          option_b: optionB.trim(),
-          option_c: optionC.trim(),
-          option_d: optionD.trim(),
-          correct_option: correctOption,
+          option_a: questionType === 'TRUE_FALSE' ? (optionA.trim() || 'True') : optionA.trim(),
+          option_b: questionType === 'TRUE_FALSE' ? (optionB.trim() || 'False') : optionB.trim(),
+          option_c: questionType === 'TRUE_FALSE' ? '-' : optionC.trim(),
+          option_d: questionType === 'TRUE_FALSE' ? '-' : optionD.trim(),
+          correct_option: payloadCorrect,
+          code_snippet: codeSnippet.trim() || null,
           explanation: explanation.trim() || null,
         }),
       });
@@ -118,7 +184,7 @@ export function AddQuestionModal({
 
   return (
     <div className="fixed inset-0 bg-brand-black/75 backdrop-blur-sm z-50 flex items-center justify-center p-4 overflow-y-auto">
-      <div className="bg-white max-w-2xl w-full rounded-3xl border-4 border-brand-black shadow-editorial-lg p-6 md:p-8 space-y-6 relative max-h-[90vh] overflow-y-auto">
+      <div className="bg-white max-w-3xl w-full rounded-3xl border-4 border-brand-black shadow-editorial-lg p-6 md:p-8 space-y-6 relative max-h-[90vh] overflow-y-auto">
         <button
           onClick={onClose}
           className="absolute right-4 top-4 p-2 hover:bg-slate-100 rounded-xl border-2 border-brand-black cursor-pointer"
@@ -128,10 +194,10 @@ export function AddQuestionModal({
 
         <div>
           <span className="bg-burnt-orange text-white px-3 py-0.5 rounded font-mono text-xs font-bold uppercase border-2 border-brand-black shadow-editorial">
-            QUESTION CREATOR
+            NEW QUESTION AUTHORING SYSTEM
           </span>
           <h2 className="font-display font-black text-2xl uppercase text-brand-black mt-1">
-            {initialQuestionData ? 'Edit Question in Examination' : 'Add Question to Examination'}
+            {initialQuestionData ? 'Edit Question in Paper' : 'Add New Question to Paper'}
           </h2>
         </div>
 
@@ -141,136 +207,259 @@ export function AddQuestionModal({
           </div>
         )}
 
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
-            <label className="block text-xs font-mono font-bold uppercase mb-1">
-              QUESTION TEXT *
-            </label>
-            <textarea
-              placeholder="Enter full MCQ question statement..."
-              value={questionText}
-              onChange={(e) => setQuestionText(e.target.value)}
-              rows={3}
-              required
-              className="w-full p-3 rounded-lg border-2 border-brand-black font-sans focus:outline-none focus:ring-2 focus:ring-burnt-orange"
-            />
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-xs font-mono font-bold uppercase mb-1">
-                DIFFICULTY LEVEL
+        <form onSubmit={handleSubmit} className="space-y-5">
+          {/* QUESTION TYPE & MARKS ROW */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="md:col-span-2">
+              <label className="block text-xs font-mono font-bold uppercase mb-1 text-brand-black">
+                QUESTION TYPE *
               </label>
-              <select
-                value={difficulty}
-                onChange={(e) => setDifficulty(e.target.value as any)}
-                className="w-full p-3 rounded-lg border-2 border-brand-black font-mono text-xs focus:outline-none cursor-pointer bg-white"
-              >
-                <option value="EASY">EASY</option>
-                <option value="MEDIUM">MEDIUM</option>
-                <option value="HARD">HARD</option>
-              </select>
+              <div className="grid grid-cols-3 gap-2">
+                <button
+                  type="button"
+                  onClick={() => handleQuestionTypeChange('SINGLE_CHOICE')}
+                  className={`p-2.5 rounded-xl border-2 font-mono text-xs font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
+                    questionType === 'SINGLE_CHOICE' || questionType === 'MCQ_SINGLE'
+                      ? 'bg-burnt-orange text-white border-brand-black shadow-editorial'
+                      : 'bg-slate-50 text-slate-700 border-slate-300 hover:border-brand-black'
+                  }`}
+                >
+                  <CircleDot className="w-3.5 h-3.5" /> Single
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => handleQuestionTypeChange('MULTIPLE_CHOICE')}
+                  className={`p-2.5 rounded-xl border-2 font-mono text-xs font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
+                    questionType === 'MULTIPLE_CHOICE' || questionType === 'MCQ_MULTIPLE'
+                      ? 'bg-vibrant-pink text-white border-brand-black shadow-editorial'
+                      : 'bg-slate-50 text-slate-700 border-slate-300 hover:border-brand-black'
+                  }`}
+                >
+                  <CheckSquare className="w-3.5 h-3.5" /> Multiple
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => handleQuestionTypeChange('TRUE_FALSE')}
+                  className={`p-2.5 rounded-xl border-2 font-mono text-xs font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
+                    questionType === 'TRUE_FALSE'
+                      ? 'bg-deep-blue text-white border-brand-black shadow-editorial'
+                      : 'bg-slate-50 text-slate-700 border-slate-300 hover:border-brand-black'
+                  }`}
+                >
+                  True / False
+                </button>
+              </div>
             </div>
 
             <div>
-              <label className="block text-xs font-mono font-bold uppercase mb-1">
-                DEFAULT MARKS
+              <label className="block text-xs font-mono font-bold uppercase mb-1 text-brand-black">
+                MARKS *
               </label>
               <input
                 type="number"
                 value={marks}
                 onChange={(e) => setMarks(e.target.value === '' ? '' : parseInt(e.target.value, 10))}
                 min={1}
-                className="w-full p-3 rounded-lg border-2 border-brand-black font-mono text-xs font-bold focus:outline-none"
+                className="w-full p-2.5 rounded-xl border-2 border-brand-black font-mono text-xs font-bold focus:outline-none"
               />
             </div>
           </div>
 
-          <div className="space-y-3 pt-2 border-t-2 border-slate-200">
-            <label className="block text-xs font-mono font-bold uppercase text-brand-black">
-              ANSWER OPTIONS *
+          {/* QUESTION TEXT STATEMENT (MULTILINE) */}
+          <div>
+            <label className="block text-xs font-mono font-bold uppercase mb-1">
+              QUESTION TEXT STATEMENT *
+            </label>
+            <textarea
+              placeholder="Enter full question statement (supports multiline text & formatting)..."
+              value={questionText}
+              onChange={(e) => setQuestionText(e.target.value)}
+              rows={4}
+              required
+              className="w-full p-3.5 rounded-xl border-2 border-brand-black font-sans text-sm focus:outline-none focus:ring-2 focus:ring-burnt-orange leading-relaxed"
+            />
+          </div>
+
+          {/* CODE / CODE-BASED QUESTION CONTENT */}
+          <div>
+            <label className="block text-xs font-mono font-bold uppercase mb-1 text-slate-700 flex items-center gap-1.5">
+              <Code className="w-4 h-4 text-burnt-orange" /> CODE BLOCK / PROGRAM SNIPPET (MULTILINE CODE)
+            </label>
+            <textarea
+              placeholder="Paste multiline code snippet here (e.g. #include <stdio.h> \n int main() { ... })..."
+              value={codeSnippet}
+              onChange={(e) => setCodeSnippet(e.target.value)}
+              rows={4}
+              className="w-full p-3.5 rounded-xl border-2 border-brand-black font-mono text-xs bg-slate-900 text-emerald-400 focus:outline-none focus:ring-2 focus:ring-emerald-500 leading-normal"
+            />
+          </div>
+
+          {/* ANSWER OPTIONS INPUTS */}
+          {questionType === 'TRUE_FALSE' ? (
+            <div className="space-y-3 pt-2 border-t-2 border-slate-200">
+              <label className="block text-xs font-mono font-bold uppercase text-brand-black">
+                TRUE / FALSE OPTIONS
+              </label>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="bg-slate-100 p-3 rounded-xl border-2 border-brand-black font-mono text-sm font-bold text-emerald-700">
+                  Option A: True
+                </div>
+                <div className="bg-slate-100 p-3 rounded-xl border-2 border-brand-black font-mono text-sm font-bold text-rose-700">
+                  Option B: False
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-3 pt-2 border-t-2 border-slate-200">
+              <label className="block text-xs font-mono font-bold uppercase text-brand-black">
+                ANSWER OPTIONS (MULTILINE CODE & TEXT SUPPORTED) *
+              </label>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div>
+                  <span className="block text-[11px] font-mono font-bold text-slate-600 mb-1">Option A</span>
+                  <textarea
+                    placeholder="Option A content..."
+                    value={optionA}
+                    onChange={(e) => setOptionA(e.target.value)}
+                    rows={2}
+                    required
+                    className="w-full p-2.5 rounded-xl border-2 border-brand-black font-sans text-xs focus:outline-none focus:ring-2 focus:ring-burnt-orange"
+                  />
+                </div>
+
+                <div>
+                  <span className="block text-[11px] font-mono font-bold text-slate-600 mb-1">Option B</span>
+                  <textarea
+                    placeholder="Option B content..."
+                    value={optionB}
+                    onChange={(e) => setOptionB(e.target.value)}
+                    rows={2}
+                    required
+                    className="w-full p-2.5 rounded-xl border-2 border-brand-black font-sans text-xs focus:outline-none focus:ring-2 focus:ring-burnt-orange"
+                  />
+                </div>
+
+                <div>
+                  <span className="block text-[11px] font-mono font-bold text-slate-600 mb-1">Option C</span>
+                  <textarea
+                    placeholder="Option C content..."
+                    value={optionC}
+                    onChange={(e) => setOptionC(e.target.value)}
+                    rows={2}
+                    required
+                    className="w-full p-2.5 rounded-xl border-2 border-brand-black font-sans text-xs focus:outline-none focus:ring-2 focus:ring-burnt-orange"
+                  />
+                </div>
+
+                <div>
+                  <span className="block text-[11px] font-mono font-bold text-slate-600 mb-1">Option D</span>
+                  <textarea
+                    placeholder="Option D content..."
+                    value={optionD}
+                    onChange={(e) => setOptionD(e.target.value)}
+                    rows={2}
+                    required
+                    className="w-full p-2.5 rounded-xl border-2 border-brand-black font-sans text-xs focus:outline-none focus:ring-2 focus:ring-burnt-orange"
+                  />
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* CORRECT ANSWER SELECTOR */}
+          <div className="pt-3 border-t-2 border-slate-200">
+            <label className="block text-xs font-mono font-bold uppercase mb-2 text-brand-black">
+              CORRECT ANSWER CONFIGURATION (SERVER-GRADED) *
             </label>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              <div>
-                <span className="block text-[11px] font-mono font-bold text-slate-500 mb-0.5">Option A</span>
-                <input
-                  type="text"
-                  placeholder="Option A text..."
-                  value={optionA}
-                  onChange={(e) => setOptionA(e.target.value)}
-                  required
-                  className="w-full p-2.5 rounded-lg border-2 border-brand-black font-sans text-xs focus:outline-none focus:ring-2 focus:ring-burnt-orange"
-                />
+            {questionType === 'TRUE_FALSE' ? (
+              <div className="grid grid-cols-2 gap-3">
+                <button
+                  type="button"
+                  onClick={() => setCorrectOption('A')}
+                  className={`p-3 rounded-xl border-2 font-mono text-xs font-bold flex items-center justify-center gap-2 cursor-pointer ${
+                    correctOption === 'A'
+                      ? 'bg-emerald-600 text-white border-brand-black shadow-editorial'
+                      : 'bg-white text-slate-700 border-slate-300'
+                  }`}
+                >
+                  <CircleDot className="w-4 h-4" /> Correct: True (A)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setCorrectOption('B')}
+                  className={`p-3 rounded-xl border-2 font-mono text-xs font-bold flex items-center justify-center gap-2 cursor-pointer ${
+                    correctOption === 'B'
+                      ? 'bg-emerald-600 text-white border-brand-black shadow-editorial'
+                      : 'bg-white text-slate-700 border-slate-300'
+                  }`}
+                >
+                  <CircleDot className="w-4 h-4" /> Correct: False (B)
+                </button>
               </div>
-
+            ) : questionType === 'MULTIPLE_CHOICE' || questionType === 'MCQ_MULTIPLE' ? (
               <div>
-                <span className="block text-[11px] font-mono font-bold text-slate-500 mb-0.5">Option B</span>
-                <input
-                  type="text"
-                  placeholder="Option B text..."
-                  value={optionB}
-                  onChange={(e) => setOptionB(e.target.value)}
-                  required
-                  className="w-full p-2.5 rounded-lg border-2 border-brand-black font-sans text-xs focus:outline-none focus:ring-2 focus:ring-burnt-orange"
-                />
+                <p className="text-xs text-slate-600 mb-2 font-mono">
+                  Select ALL correct options (Checkboxes):
+                </p>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                  {(['A', 'B', 'C', 'D'] as const).map((opt) => {
+                    const isChecked = correctOptionsMultiple.includes(opt);
+                    return (
+                      <button
+                        key={opt}
+                        type="button"
+                        onClick={() => toggleMultipleOption(opt)}
+                        className={`p-3 rounded-xl border-2 font-mono text-xs font-bold flex items-center justify-center gap-2 cursor-pointer transition-all ${
+                          isChecked
+                            ? 'bg-vibrant-pink text-white border-brand-black shadow-editorial'
+                            : 'bg-white text-slate-700 border-slate-300 hover:border-brand-black'
+                        }`}
+                      >
+                        <CheckSquare className="w-4 h-4" /> Option {opt}
+                      </button>
+                    );
+                  })}
+                </div>
+                <p className="text-[11px] font-mono text-vibrant-pink font-bold mt-2">
+                  Selected Correct Options: {correctOptionsMultiple.sort().join(' + ')}
+                </p>
               </div>
-
-              <div>
-                <span className="block text-[11px] font-mono font-bold text-slate-500 mb-0.5">Option C</span>
-                <input
-                  type="text"
-                  placeholder="Option C text..."
-                  value={optionC}
-                  onChange={(e) => setOptionC(e.target.value)}
-                  required
-                  className="w-full p-2.5 rounded-lg border-2 border-brand-black font-sans text-xs focus:outline-none focus:ring-2 focus:ring-burnt-orange"
-                />
+            ) : (
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                {(['A', 'B', 'C', 'D'] as const).map((opt) => (
+                  <button
+                    key={opt}
+                    type="button"
+                    onClick={() => setCorrectOption(opt)}
+                    className={`p-3 rounded-xl border-2 font-mono text-xs font-bold flex items-center justify-center gap-2 cursor-pointer transition-all ${
+                      correctOption === opt
+                        ? 'bg-emerald-600 text-white border-brand-black shadow-editorial'
+                        : 'bg-white text-slate-700 border-slate-300 hover:border-brand-black'
+                    }`}
+                  >
+                    <CircleDot className="w-4 h-4" /> Option {opt}
+                  </button>
+                ))}
               </div>
-
-              <div>
-                <span className="block text-[11px] font-mono font-bold text-slate-500 mb-0.5">Option D</span>
-                <input
-                  type="text"
-                  placeholder="Option D text..."
-                  value={optionD}
-                  onChange={(e) => setOptionD(e.target.value)}
-                  required
-                  className="w-full p-2.5 rounded-lg border-2 border-brand-black font-sans text-xs focus:outline-none focus:ring-2 focus:ring-burnt-orange"
-                />
-              </div>
-            </div>
+            )}
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2 border-t-2 border-slate-200">
-            <div>
-              <label className="block text-xs font-mono font-bold uppercase mb-1">
-                CORRECT OPTION (SERVER-GRADED) *
-              </label>
-              <select
-                value={correctOption}
-                onChange={(e) => setCorrectOption(e.target.value as any)}
-                className="w-full p-3 rounded-lg border-2 border-brand-black font-mono text-xs font-bold focus:outline-none cursor-pointer bg-emerald-50 border-emerald-600 text-emerald-800"
-              >
-                <option value="A">Option A</option>
-                <option value="B">Option B</option>
-                <option value="C">Option C</option>
-                <option value="D">Option D</option>
-              </select>
-            </div>
-
-            <div>
-              <label className="block text-xs font-mono font-bold uppercase mb-1">
-                EXPLANATION (OPTIONAL)
-              </label>
-              <input
-                type="text"
-                placeholder="Rationale for correct answer..."
-                value={explanation}
-                onChange={(e) => setExplanation(e.target.value)}
-                className="w-full p-3 rounded-lg border-2 border-brand-black font-sans text-xs focus:outline-none"
-              />
-            </div>
+          {/* EXPLANATION */}
+          <div className="pt-2 border-t-2 border-slate-200">
+            <label className="block text-xs font-mono font-bold uppercase mb-1">
+              EXPLANATION (OPTIONAL)
+            </label>
+            <input
+              type="text"
+              placeholder="Rationale / explanation for the correct answer..."
+              value={explanation}
+              onChange={(e) => setExplanation(e.target.value)}
+              className="w-full p-3 rounded-xl border-2 border-brand-black font-sans text-xs focus:outline-none"
+            />
           </div>
 
           <div className="flex items-center justify-end gap-3 pt-4 border-t-2 border-slate-200">
