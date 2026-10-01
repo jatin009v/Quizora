@@ -89,7 +89,10 @@ async function runBootstrap() {
 
   try {
     // 1. Bootstrap System Administrator
-    await bootstrapAccount('admin', 'admin123', 'System Administrator', 'DCA Administration', '1st Year', 'ADMIN');
+    await bootstrapAccount('admin', process.env.ADMIN_PASSWORD || 'admin123', 'System Administrator', 'DCA Administration', '1st Year', 'ADMIN');
+    if (process.env.SANKALP_PASSWORD) {
+      await bootstrapAccount('sankalp', process.env.SANKALP_PASSWORD, 'Sankalp', 'DCA Administration', '1st Year', 'ADMIN');
+    }
 
     // 2. Bootstrap Chief Exam Proctor
     await bootstrapAccount('proctor', 'proctor123', 'Chief Exam Proctor', 'DCA Examination Unit', '1st Year', 'PROCTOR');
